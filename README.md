@@ -1,15 +1,16 @@
-# Fatigue — Hevy Analytics
+# Baseline
 
-**Live: https://hi7anshu.github.io/hevy-fatigue/**
+**Live: https://hi7anshu.github.io/baseline/**
 
-Per-muscle fatigue, recovery and detraining analytics for a [Hevy](https://hevy.com) training
-log, as an installable iPhone web app.
+Recovery, body composition and nutrition for a [Hevy](https://hevy.com) training log, as an
+installable iPhone web app.
 
-Hevy tells you how many sets a muscle got. This tells you which muscles are still cooked, when
-they clear, and which ones are quietly detraining — using
+Hevy tells you how many sets a muscle got. Baseline tells you which muscles are still cooked,
+when they clear, which are quietly detraining, what your composition is doing, and whether you
+are eating enough to support any of it — using
 [openGym](https://github.com/DuarteSantos8/openGym)'s recovery model over Hevy's data.
 
-It **only reads**. Keep logging in Hevy exactly as you do now.
+It **only reads** Hevy. Keep logging there exactly as you do now.
 
 ---
 
@@ -29,26 +30,49 @@ machine running.
 
 | | |
 |---|---|
-| **Hevy's servers** | The source of truth. Your account, your history, their backups. |
-| **Your phone** | An IndexedDB cache so the app opens instantly and works offline. |
+| **Hevy's servers** | Source of truth for training. Your account, your history, their backups. |
+| **Your phone** | An IndexedDB cache, plus measurements and nutrition, which live only here. |
 | **Anywhere else** | Nothing. The host serves files and sees no data. |
 
-The app holds nothing Hevy does not. Clear it, reinstall it, switch phones — re-import and
-everything is back. There is also an **Export backup** button for a JSON copy.
+Training can always be rebuilt from Hevy. Measurements and nutrition are logged here and exist
+nowhere else, so use **Export backup** on the Data tab if they matter to you.
+
+---
+
+## The five tabs
+
+**Recovery** — one body map, two lenses. *Fatigue* is what is too fresh to train; *Retention* is
+what has gone stale from not being trained. They are opposite instructions, so they share a
+screen. Green is good on both.
+
+**Training** — *Volume* (effective sets per muscle, on a neutral blue scale because volume has
+no good or bad end) and *Effort* (RPE spread and weekly trend).
+
+**Body** — weight, neck, waist, hips, chest, arm, thigh, calf. Derives waist-to-height, body
+fat, lean mass, BMI and FFMI. Exists because Hevy gates everything past weight and waist behind
+Pro.
+
+**Fuel** — daily calories and macros. Paste what your phone's Claude gives you and the fields
+fill in; it reads `Total: 2,150 kcal | Protein 148g …` and most other phrasings.
+
+**Data** — import, sync, export, and identifying exercises the catalogue does not know.
 
 ---
 
 ## Getting your training in
 
 **CSV (any Hevy account).** In Hevy: Settings → Export & Import Data → Export Workout Data.
-Save the file, open the app's **Data** tab, pick it. Hevy exports your whole history every
-time, so a re-import refreshes every day it covers — editing a past session in Hevy and
-re-exporting corrects it here, rather than leaving the first version frozen.
+Save the file, open the **Data** tab, pick it. Hevy exports your whole history every time, so a
+re-import refreshes every day it covers — editing a past session in Hevy and re-exporting
+corrects it here, rather than leaving the first version frozen.
 
-**API sync (needs Hevy Pro).** Get a key at `hevy.com/settings?developer`, paste it into the
+**API sync (needs Hevy Pro).** Get a key at `hevy.com/settings?developer` and paste it into the
 Data tab. The first sync pulls everything; later syncs ask `/v1/workouts/events` for only what
 changed, so an edited or deleted workout corrects itself. The key is stored on your device and
 is sent to nobody but Hevy.
+
+**Body weight** has its own import — a Hevy measurements export, an Apple Health export, or any
+CSV with a date and a weight column.
 
 ---
 
@@ -69,13 +93,6 @@ Pushing to `main` builds and publishes to GitHub Pages automatically
 GitHub Pages project site is served from. It defaults to `/`, so a root-domain host or a custom
 domain needs no change beyond pointing DNS and clearing the variable.
 
-Any static host works the same way:
-
-```bash
-npm run build            # -> dist/, served from /
-npx wrangler pages deploy dist --project-name fatigue
-```
-
 ### Installing on the iPhone
 
 Open the deployed URL in **Safari** (not Chrome — only Safari can install), then Share → **Add
@@ -93,10 +110,15 @@ src/
     components/    BodyMap
   lib/
     hevy.js        API client + Hevy -> openGym normaliser
-    match.js       exercise-name overlay (see below)
+    match.js       exercise-name overlay and manual assignment
     eta.js         recovery-time arithmetic
+    groups.js      18 muscles -> 6 groups, with per-view roll-up
+    body.js        waist-to-height, Navy body fat, lean mass, FFMI
+    nutrition.js   macro parsing, TDEE estimate, weekly summaries
     store.js       IndexedDB persistence
-  views/           Recovery, Volume, Strength, Effort, Data
+  components/
+    MuscleList.jsx grouped, expandable muscle list
+  views/           Recovery, Training, Body, Fuel, Data, Unidentified
 ```
 
 `src/vendor/` is an unmodified copy of openGym's pure logic, so re-vendoring a newer upstream is
@@ -110,34 +132,46 @@ a straight file copy. Everything project-specific sits outside it and layers on 
   plurals, equipment placed inline or in parentheses, and grip/stance qualifiers the dataset
   has no variant for. A 62-name sample goes from 47/62 to 61/62.
 - **Exercises the catalogue does not contain at all** are the permanent gap — openGym's list is
-  fixed and Hevy keeps adding movements. The **Unidentified exercises** panel in the Data tab
-  lets you point one at a catalogue exercise or name its muscles directly. The decision is
-  remembered by name, applied to every future import, and **back-applied to history already on
-  file**. Improving the matcher also re-runs on load, so previously unidentified exercises
-  resolve themselves with no re-import.
+  fixed and Hevy keeps adding movements. The **Unidentified exercises** panel lets you point one
+  at a catalogue exercise or name its muscles directly. The decision is remembered by name,
+  applied to every future import, and **back-applied to history already on file**. Improving the
+  matcher also re-runs on load, so previously unidentified exercises resolve themselves with no
+  re-import.
 - Until identified, such an exercise is left **unattributed rather than guessed**, and listed
   back to you. A wrong fatigue reading gets acted on; a missing one does not.
 - **Build-time catalogue trim** (`vite.config.js`) drops the exercise instructions and media
-  filenames nothing renders, cutting the bundle from 1.1 MB to 417 KB (100 KB gzipped) without
-  touching the vendored source.
+  filenames nothing renders, cutting the bundle by roughly 60% without touching the vendored
+  source.
 
 ## What the numbers mean
 
 - **Fatigue** — intensity-weighted volume per muscle, decaying on a 36-hour half-life, scored
-  against your own recent sessions. A hard block raises the bar rather than pinning everything
-  red. Bands: ready < 25%, recovering ≤ 50%, fatigued above.
-- **Ready in** — solved from the decay curve, not estimated: the time for the accumulated
-  stimulus to fall to the ready threshold.
+  against your own recent sessions. Bands: ready < 25%, recovering ≤ 50%, fatigued above. A
+  group shows its *most* fatigued muscle, because that is what limits the session.
+- **Ready in** — solved from the decay curve, not estimated: the time for accumulated stimulus
+  to fall to the ready threshold.
 - **Retained strength** — full for 14 days after a work set, then a 28-day half-life to a 50%
-  floor. Low here means detraining, not tiredness — the opposite instruction to fatigue.
+  floor. A group shows its weakest muscle *that you actually train*; muscles sitting on the
+  floor because they were never worked directly would otherwise pin every group at 50% forever.
 - **Effort** — aggregated in RIR internally and converted for display, so a history mixing RPE
   and RIR still draws one series. Averages are hidden below 5 rated sets.
+- **Waist-to-height** — needs no equation and no assumptions. Under 0.5 is the usual guideline.
+  This is the body number to trust.
+- **Body fat** — US Navy circumference method. Roughly ±3–4 points on the absolute value but
+  reliable on direction, so read the trend, not the digit. Lean mass and FFMI are derived from
+  it and inherit that error; all three are marked ≈.
+- **Estimated burn** — Mifflin-St Jeor scaled by a self-reported activity level. A reference
+  line for a week of intake, not a target.
+
+Nutrition and training are shown on one timeline, and concrete things are flagged — protein
+against body weight, intake against estimated burn. Baseline does **not** compute a recovery
+score from food. That data cannot support it, and a confident invented number would be worse
+than none.
 
 ## Licence and attribution
 
 `src/vendor/` is from [openGym](https://github.com/DuarteSantos8/openGym) by Duarte Santos,
-**AGPL-3.0** — so this project is AGPL-3.0 too (see `LICENSE`). Personal use imposes nothing,
-but if you put it on a public URL, publish the source to stay clean. Body geometry is from
-MuscleMap by Melih Colpan (MIT); see `NOTICE-opengym.md`.
+**AGPL-3.0** — so this project is AGPL-3.0 too (see `LICENSE`). Body geometry is from MuscleMap
+by Melih Colpan (MIT); see `NOTICE-opengym.md`.
 
 Not affiliated with Hevy or openGym.

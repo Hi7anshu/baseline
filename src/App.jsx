@@ -4,18 +4,22 @@ import { registerCustom } from './vendor/lib/exercises.js'
 import { loadState, saveState, loadSettings, saveSettings, emptyState } from './lib/store.js'
 import { reresolveCustoms } from './lib/match.js'
 import Recovery from './views/Recovery.jsx'
-import Volume from './views/Volume.jsx'
-import Strength from './views/Strength.jsx'
-import Effort from './views/Effort.jsx'
+import Training from './views/Training.jsx'
+import Body from './views/Body.jsx'
+import Fuel from './views/Fuel.jsx'
 import Data from './views/Data.jsx'
 
 const TABS = [
   { id: 'recovery', label: 'Recovery', icon: '◱' },
-  { id: 'volume', label: 'Volume', icon: '▤' },
-  { id: 'strength', label: 'Strength', icon: '△' },
-  { id: 'effort', label: 'Effort', icon: '◔' },
+  { id: 'training', label: 'Training', icon: '▤' },
+  { id: 'body', label: 'Body', icon: '⬡' },
+  { id: 'fuel', label: 'Fuel', icon: '◈' },
   { id: 'data', label: 'Data', icon: '⇄' },
 ]
+
+// Recovery and Training are read-only views of imported training, so they have nothing to show
+// until something is imported. Body and Fuel are logged here directly and work from empty.
+const NEEDS_TRAINING = new Set(['recovery', 'training'])
 
 export default function App() {
   const [S, setS] = useState(emptyState)
@@ -58,10 +62,6 @@ export default function App() {
     await saveSettings(next)
   }, [])
 
-  // Custom exercises live outside the shipped catalogue, and every muscle lookup goes through
-  // the catalogue's id index — so without this an exercise Hevy described but openGym could not
-  // name resolves to nothing and silently contributes no fatigue at all. Registering returns a
-  // key the derived passes depend on, which is what forces them to recompute after an import.
   const customKey = useMemo(() => {
     const list = S.customEx || []
     registerCustom(list)
@@ -84,25 +84,25 @@ export default function App() {
 
   if (!ready) return <div className="boot">Loading…</div>
 
-  const empty = !S.workouts.length
+  const blocked = !S.workouts.length && NEEDS_TRAINING.has(tab)
   const shared = { S, settings, now, opts, fatigue, strength, commitState, commitSettings }
 
   return (
     <div className="app">
       <header className="top">
         <h1>{TABS.find(t => t.id === tab).label}</h1>
-        {!empty && <span className="top-sub">{S.workouts.length} workouts</span>}
+        {S.workouts.length > 0 && <span className="top-sub">{S.workouts.length} workouts</span>}
       </header>
 
       <main className="body">
-        {empty && tab !== 'data' ? (
+        {blocked ? (
           <Onboard onGo={() => setTab('data')} />
         ) : (
           <>
             {tab === 'recovery' && <Recovery {...shared} />}
-            {tab === 'volume' && <Volume {...shared} />}
-            {tab === 'strength' && <Strength {...shared} />}
-            {tab === 'effort' && <Effort {...shared} />}
+            {tab === 'training' && <Training {...shared} />}
+            {tab === 'body' && <Body {...shared} />}
+            {tab === 'fuel' && <Fuel {...shared} />}
             {tab === 'data' && <Data {...shared} />}
           </>
         )}
@@ -129,7 +129,7 @@ function Onboard({ onGo }) {
     <div className="card empty">
       <h2>No training loaded yet</h2>
       <p>
-        This app reads your Hevy log and works out per-muscle fatigue, recovery and detraining.
+        Baseline reads your Hevy log and works out per-muscle fatigue, recovery and detraining.
         It never writes back — keep logging in Hevy exactly as you do now.
       </p>
       <button className="btn primary" onClick={onGo}>Connect Hevy</button>

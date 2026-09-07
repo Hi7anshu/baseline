@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { parseImport, mergeImport } from '../vendor/lib/import-csv.js'
+import { parseImport, parseBodyweight, mergeImport } from '../vendor/lib/import-csv.js'
 import { remapParsed, reresolveCustoms } from '../lib/match.js'
 import { sync, fetchUser, HevyError } from '../lib/hevy.js'
 import { exportJSON, emptyState } from '../lib/store.js'
@@ -18,6 +18,7 @@ export default function Data({ S, settings, commitState, commitSettings }) {
   const [err, setErr] = useState(null)
   const [key, setKey] = useState(settings.apiKey || '')
   const file = useRef(null)
+  const weightFile = useRef(null)
 
   const done = (text, unmatched) => { setMsg({ text, unmatched }); setErr(null); setBusy(null) }
   const failed = text => { setErr(text); setMsg(null); setBusy(null) }
@@ -67,6 +68,31 @@ export default function Data({ S, settings, commitState, commitSettings }) {
     }
   }
 
+  async function onWeightFile(e) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setBusy('Reading file…'); setErr(null); setMsg(null)
+    try {
+      // Forced rather than auto-detected: a two-column date+weight CSV is ambiguous enough that
+      // parseImport can read it as a workout file and find nothing.
+      const parsed = parseBodyweight(await f.text(), { unit: 'kg' })
+      if (parsed.error || !parsed.bodyweight?.length) {
+        failed('No weights found. Expected a Hevy measurements export, an Apple Health export, or a CSV with a date and a weight column.')
+        return
+      }
+      const byDate = new Map((S.bodyweight || []).map(b => [b.d, b]))
+      for (const b of parsed.bodyweight) byDate.set(b.d, b)
+      const bodyweight = [...byDate.values()].sort((a, b) => (a.d < b.d ? -1 : 1))
+      const added = bodyweight.length - (S.bodyweight?.length || 0)
+      await commitState({ ...S, bodyweight })
+      done(`${added} new weigh-ins, ${parsed.bodyweight.length - added} updated — ${bodyweight.length} total.`)
+    } catch (ex) {
+      failed(ex.message || 'Could not read that file.')
+    } finally {
+      if (weightFile.current) weightFile.current.value = ''
+    }
+  }
+
   async function onSync() {
     if (!key.trim()) return failed('Paste your Hevy API key first.')
     setBusy('Connecting…'); setErr(null); setMsg(null)
@@ -101,6 +127,22 @@ export default function Data({ S, settings, commitState, commitSettings }) {
         <button className="btn primary" disabled={!!busy} onClick={() => file.current?.click()}>
           Choose CSV file
         </button>
+      </section>
+
+      <section className="card">
+        <h2 className="c-h">Import body weight</h2>
+        <p className="p">
+          A Hevy measurements export, an Apple Health export, or any CSV with a date and a weight.
+          Weights feed the body-composition maths and the load on bodyweight exercises.
+        </p>
+        <input ref={weightFile} type="file" accept=".csv,.xml,text/csv" onChange={onWeightFile} hidden />
+        <button className="btn" disabled={!!busy} onClick={() => weightFile.current?.click()}>
+          Choose weight file
+        </button>
+        <p className="foot">
+          On free Hevy only weight and waist can be recorded at all — everything else is logged
+          under <strong>Body</strong> here instead.
+        </p>
       </section>
 
       <section className="card">
@@ -158,6 +200,10 @@ export default function Data({ S, settings, commitState, commitSettings }) {
           <div className="v-col"><span className="v-n">{S.customEx?.length || 0}</span><span className="v-l">custom lifts</span></div>
           <div className="v-col"><span className="v-n">{S.bodyweight?.length || 0}</span><span className="v-l">weigh-ins</span></div>
         </div>
+        <div className="verdict">
+          <div className="v-col"><span className="v-n">{S.measurements?.length || 0}</span><span className="v-l">measurements</span></div>
+          <div className="v-col"><span className="v-n">{S.nutrition?.length || 0}</span><span className="v-l">days logged</span></div>
+        </div>
         <p className="p">
           Everything lives in this browser and on Hevy's servers. Nothing is uploaded anywhere else
           and no server holds a copy, so there is nothing to keep running.
@@ -173,7 +219,9 @@ export default function Data({ S, settings, commitState, commitSettings }) {
           Fatigue, recovery and detraining maths are from{' '}
           <a href="https://github.com/DuarteSantos8/openGym" target="_blank" rel="noreferrer">openGym</a>{' '}
           by Duarte Santos (AGPL-3.0), used here unmodified. Body geometry from MuscleMap by
-          Melih Colpan (MIT). This app only reads Hevy — it never writes to your log.
+          Melih Colpan (MIT). Baseline only reads Hevy — it never writes to your log. Body-fat
+          estimates use the US Navy circumference method; the calorie estimate uses
+          Mifflin-St Jeor. Both are estimates, not measurements.
         </p>
       </section>
     </>

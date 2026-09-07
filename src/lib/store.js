@@ -3,6 +3,8 @@
 // it means no server has to hold this data, and losing the phone loses nothing.
 import { get, set } from 'idb-keyval'
 
+// Keys are unchanged across the rename: they address a store on this device, and renaming them
+// would silently orphan everything already logged.
 const KEY = 'opengym-hevy-state'
 const KEY_SETTINGS = 'opengym-hevy-settings'
 
@@ -13,6 +15,9 @@ export const emptyState = () => ({
   bodyweight: [],    // [{ d, w }]
   exWeights: {},     // seeded by mergeImport; unused here but keeps the contract intact
   overrides: {},     // exercise name -> your own identification, applied to every import
+  measurements: [],  // [{ d, weight, neck, waist, hips, chest, arm, thigh, calf }]
+  nutrition: [],     // [{ d, kcal, protein, carbs, fat }]
+  profile: {},       // { heightCm, sex, dob, activity } — only ever used for local maths
   unit: 'kg',
 })
 
@@ -45,7 +50,7 @@ export async function saveSettings(s) {
 export function exportJSON(S, settings) {
   const payload = {
     exportedAt: new Date().toISOString(),
-    app: 'opengym-hevy',
+    app: 'baseline',
     state: S,
     settings: { ...settings, apiKey: settings.apiKey ? '(redacted)' : '' },
   }
@@ -53,7 +58,7 @@ export function exportJSON(S, settings) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `fatigue-backup-${new Date().toISOString().slice(0, 10)}.json`
+  a.download = `baseline-backup-${new Date().toISOString().slice(0, 10)}.json`
   a.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

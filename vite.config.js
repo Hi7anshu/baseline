@@ -44,9 +44,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon-192.png', 'icon-512.png', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Fatigue — Hevy Analytics',
-        short_name: 'Fatigue',
-        description: 'Per-muscle fatigue and recovery analytics for your Hevy training log.',
+        name: 'Baseline — Training & Body',
+        short_name: 'Baseline',
+        description: 'Recovery, body composition and nutrition, read from your Hevy training log.',
         theme_color: '#0d1117',
         background_color: '#0d1117',
         display: 'standalone',
