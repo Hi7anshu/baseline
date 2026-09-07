@@ -7,6 +7,7 @@
 // rather than broken, and the UI says so.
 import { e1rmSeries, best1RM, REP_CAP } from '../vendor/lib/onerm.js'
 import { exOr } from '../vendor/lib/exercises.js'
+import { isWarmupRow } from '../vendor/lib/workout-model.js'
 
 // A PR set on a day you also happened to do one heavy single is still a PR; a 1% wobble
 // between sessions is not a trend. This is the line between the two.
@@ -14,6 +15,36 @@ const MEANINGFUL_PCT = 0.02
 
 // After this long without beating your best, "stalled" is a fair description rather than noise.
 const STALE_MS = 42 * 24 * 60 * 60 * 1000
+
+/**
+ * The heaviest load actually moved, with the reps it was moved for.
+ *
+ * Shown next to the estimate because the estimate is the number people misread. A best set of
+ * 30 kg × 10 produces a 40 kg e1RM under Epley, and 40 kg is then a weight you have never
+ * touched — correct as an estimate, alarming as a readout. Printing the real set beside it
+ * makes the difference visible instead of leaving it to the footnote.
+ *
+ * Unlike the estimate this has no rep cap: a 20-rep set is not an estimate of anything, but it
+ * is still unambiguously a weight that was lifted.
+ */
+export function heaviestSet(S, exId, cutoff = 0) {
+  let best = null
+  for (const w of S.workouts || []) {
+    if (w.start && w.start <= cutoff) continue
+    const entry = (w.entries || []).find(e => e.id === exId)
+    if (!entry) continue
+    for (const set of entry.sets || []) {
+      if (!set.done || isWarmupRow(set)) continue
+      const kg = Number(set.w)
+      const reps = Number(set.r)
+      if (!(kg > 0) || !(reps >= 1)) continue
+      if (!best || kg > best.w || (kg === best.w && reps > best.r)) {
+        best = { w: kg, r: Math.round(reps), d: w.d }
+      }
+    }
+  }
+  return best
+}
 
 /**
  * Per-exercise strength progress over a window.
@@ -54,6 +85,7 @@ export function strengthProgress(S, days = 90) {
     rows.push({
       id,
       name: exOr(id).n,
+      heaviest: heaviestSet(S, id, cutoff),
       points,
       sessions: points.length,
       latest,

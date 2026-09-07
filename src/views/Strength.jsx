@@ -76,7 +76,12 @@ export default function Strength({ S }) {
       </section>
 
       <section className="card">
-        <h2 className="c-h">By lift</h2>
+        <h2 className="c-h">By lift · estimated 1RM</h2>
+        <p className="p">
+          Every number in this list is an <strong>estimated one-rep max</strong> (≈), not a weight
+          you have lifted. A best set of 30 kg × 10 estimates a 40 kg single — the 40 is a
+          projection off ten reps, and the set behind it is shown when you open a lift.
+        </p>
         <ul className="rows grouped">
           {rows.map(r => {
             const isOpen = open === r.id
@@ -91,6 +96,7 @@ export default function Strength({ S }) {
                     <span className="lift-n">{r.name}</span>
                   </span>
                   <span className="lift-v">
+                    <span className="est" title="estimated one-rep max">≈</span>
                     {r.latest.y}<small>kg</small>
                     {r.recentPr && <span className="tag pr">PR</span>}
                     {r.stalled && <span className="tag stall">stalled</span>}
@@ -105,22 +111,27 @@ export default function Strength({ S }) {
                     </div>
                     <div className="d-grid">
                       <div>
-                        <span className="k">Latest</span>
-                        <span className="v">{r.latest.y}<small>kg</small></span>
+                        <span className="k">Latest e1RM</span>
+                        <span className="v">≈{r.latest.y}<small>kg</small></span>
                       </div>
                       <div>
-                        <span className="k">Best</span>
-                        <span className="v">{r.best ? r.best.est : '—'}<small>kg</small></span>
+                        <span className="k">Best e1RM</span>
+                        <span className="v">{r.best ? <>≈{r.best.est}</> : '—'}<small>kg</small></span>
                       </div>
                       <div>
-                        <span className="k">Sessions</span>
-                        <span className="v">{r.sessions}</span>
+                        <span className="k">Heaviest set</span>
+                        <span className="v">
+                          {r.heaviest ? <>{r.heaviest.w}<small>kg × {r.heaviest.r}</small></> : '—'}
+                        </span>
                       </div>
                     </div>
                     <p className="foot">
-                      Latest from {r.latest.w} kg × {r.latest.r} on {r.latest.d}.
+                      Latest estimate from {r.latest.w} kg × {r.latest.r} on {r.latest.d}.
                       {r.best && (
-                        <> Best from {r.best.w} kg × {r.best.r} on {r.best.d}.</>
+                        <> Best estimate from {r.best.w} kg × {r.best.r} on {r.best.d}.</>
+                      )}
+                      {r.heaviest && (
+                        <> Heaviest load actually moved: {r.heaviest.w} kg × {r.heaviest.r} on {r.heaviest.d}.</>
                       )}
                       {r.stalled && ' No new best in over six weeks.'}
                     </p>
@@ -131,7 +142,9 @@ export default function Strength({ S }) {
           })}
         </ul>
         <p className="foot">
-          Estimated one-rep max, Epley, from the best working set of each session. Sets above{' '}
+          Estimated one-rep max, Epley — weight × (1 + reps ÷ 30) — from the best working set of
+          each session, which is why the figure sits above anything on the bar for any set past a
+          single. Sets above{' '}
           {REP_CAP} reps produce no estimate — the formulas disagree by double digits up there and
           the number stops describing strength — so high-rep isolation work will be missing from
           this list. Warm-ups are excluded. An estimate off {REP_CAP} reps is a weaker claim than

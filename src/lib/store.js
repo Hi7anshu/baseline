@@ -62,3 +62,55 @@ export function exportJSON(S, settings) {
   a.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+
+/**
+ * Restore from a backup file.
+ *
+ * A restore replaces rather than merges. Merging two histories of the same measurements would
+ * need a rule for which copy wins on a clashing date, and quietly picking one is how a backup
+ * turns into silent data loss; replacing is the thing the file name promises.
+ *
+ * The API key is never in the file — export redacts it — so the key already on this device is
+ * kept rather than being wiped by a restore.
+ *
+ * @param {string} text Raw contents of a `baseline-backup-*.json`.
+ * @param {object} settings Current settings, whose `apiKey` survives the restore.
+ * @returns {{state: object, settings: object, counts: object}}
+ * @throws {Error} With a message fit to show the user when the file is not a backup.
+ */
+export function parseBackup(text, settings) {
+  let data
+  try {
+    data = JSON.parse(text)
+  } catch {
+    throw new Error('That is not a JSON file.')
+  }
+
+  const state = data?.state
+  if (!state || !Array.isArray(state.workouts)) {
+    throw new Error('That file is not a Baseline backup — no workout list inside it.')
+  }
+  if (data.app && data.app !== 'baseline') {
+    throw new Error(`That backup was written by ${data.app}, not Baseline.`)
+  }
+
+  const restored = { ...emptyState(), ...state }
+  const incoming = data.settings || {}
+  return {
+    state: restored,
+    // A redacted key is a placeholder, not a key. Anything real in the file would still be
+    // wrong to prefer over the one already on the device.
+    settings: {
+      ...settings,
+      ...incoming,
+      apiKey: settings?.apiKey || '',
+    },
+    counts: {
+      workouts: restored.workouts.length,
+      measurements: restored.measurements?.length || 0,
+      nutrition: restored.nutrition?.length || 0,
+      bodyweight: restored.bodyweight?.length || 0,
+      exportedAt: data.exportedAt || null,
+    },
+  }
+}

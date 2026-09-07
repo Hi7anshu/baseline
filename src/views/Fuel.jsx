@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import {
-  parseMacros, kcalFromMacros, summarise, targets,
+  parseMacros, kcalFromMacros, summarise, targets, ageFrom,
   proteinVerdict, PROTEIN_LOW, CLAUDE_PROMPT,
 } from '../lib/nutrition.js'
-import { loadOfWorkouts } from '../vendor/lib/muscles.js'
+import { hardSets } from '../lib/fuel.js'
 
 const todayISO = () => {
   const d = new Date()
@@ -39,19 +39,24 @@ export default function Fuel({ S, commitState }) {
 
   const log = S.nutrition || []
   const summary = useMemo(() => summarise(log, days), [log, days])
+  // Max by date, not the last element: a restored backup or a day added out of order leaves
+  // the array in whatever sequence it arrived in, and this card claims to be about the newest day.
+  const latest = useMemo(() => log.reduce((a, b) => (!a || b.d > a.d ? b : a), null), [log])
 
   const weightKg = S.bodyweight?.length ? S.bodyweight[S.bodyweight.length - 1].w : null
   const goals = useMemo(() => targets(S.profile, weightKg), [S.profile, weightKg])
   const perKg = summary.protein != null && weightKg ? summary.protein / weightKg : null
   const verdict = proteinVerdict(perKg)
 
+  // Completed working sets, not openGym's per-muscle load: the load figure spreads one set
+  // across every muscle it touches, so a bench press counted as roughly three, and the row
+  // then read "31 sets" for a ten-set session.
   const setsByDay = useMemo(() => {
     const map = {}
     const cutoff = Date.now() - days * 86400000
     for (const w of S.workouts || []) {
       if ((w.start || new Date(w.d).getTime()) <= cutoff) continue
-      const load = loadOfWorkouts([w])
-      map[w.d] = Math.round(Object.values(load).reduce((a, b) => a + b, 0))
+      map[w.d] = (map[w.d] || 0) + hardSets(w)
     }
     return map
   }, [S.workouts, days])
@@ -186,11 +191,20 @@ export default function Fuel({ S, commitState }) {
             </p>
           </>
         ) : (
-          <p className="p">
-            Fill in height, date of birth, sex and activity under <strong>Body → Profile</strong>,
-            and log a body weight. Calorie and macro targets are calculated from those and appear
-            here.
-          </p>
+          <>
+            <p className="p">
+              Targets need {listMissing(missingFor(S))}. Fill{' '}
+              {missingFor(S).length === 1 ? 'that' : 'those'} in under{' '}
+              <strong>Body → Profile</strong> and this card fills itself in — that is the whole
+              payoff of the profile form, along with the reference line on{' '}
+              <strong>Recovery → Fuel</strong>.
+            </p>
+            <p className="foot">
+              Height, sex and date of birth go into Mifflin-St Jeor for a resting burn; activity
+              scales it to a daily one; body weight sets the protein range and the fat floor.
+              Nothing else reads them.
+            </p>
+          </>
         )}
       </section>
 
@@ -231,6 +245,40 @@ export default function Fuel({ S, commitState }) {
         )}
       </section>
 
+      {goals && latest && (
+        <section className="card">
+          <h2 className="c-h">{latest.d === todayISO() ? 'Today' : latest.d} against target</h2>
+          <ul className="reads">
+            {latest.kcal != null && (
+              <li className={Math.abs(latest.kcal - goals.tdee) < goals.tdee * 0.08 ? 'ok' : latest.kcal < goals.tdee ? 'low' : 'high'}>
+                <strong>{Math.round(latest.kcal)} kcal</strong> against {goals.tdee} maintenance —{' '}
+                {describeGap(latest.kcal, goals.tdee)}.
+              </li>
+            )}
+            {latest.protein != null && (
+              <li className={latest.protein >= goals.proteinLow ? 'ok' : 'low'}>
+                <strong>{Math.round(latest.protein)} g protein</strong> against a{' '}
+                {goals.proteinLow}–{goals.proteinHigh} g range —{' '}
+                {latest.protein >= goals.proteinLow
+                  ? 'inside it'
+                  : `${Math.round(goals.proteinLow - latest.protein)} g short of the floor`}.
+              </li>
+            )}
+            {latest.fat != null && (
+              <li className={latest.fat >= goals.fatFloor ? 'ok' : 'low'}>
+                <strong>{Math.round(latest.fat)} g fat</strong> against a {goals.fatFloor} g floor —{' '}
+                {latest.fat >= goals.fatFloor ? 'above it' : 'under it'}.
+              </li>
+            )}
+          </ul>
+          <p className="foot">
+            One day is a day. The window below is what to act on, and{' '}
+            <strong>Recovery → Fuel</strong> puts these against the training they were meant to
+            support.
+          </p>
+        </section>
+      )}
+
       {summary.logged > 0 && (
         <section className="card">
           <h2 className="c-h">Reading</h2>
@@ -265,7 +313,7 @@ export default function Fuel({ S, commitState }) {
           <h2 className="c-h">Day by day</h2>
           <ul className="rows">
             {[...summary.days].reverse().map(d => (
-              <li key={d.d} className="row day-row" onClick={() => remove(d.d)}>
+              <li key={d.d} className="row day-row static">
                 <span className="r-name">
                   {new Date(d.d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
                 </span>
@@ -274,12 +322,13 @@ export default function Fuel({ S, commitState }) {
                   {d.protein != null ? <em>{Math.round(d.protein)}p</em> : null}
                   {setsByDay[d.d] ? <em className="sets">{setsByDay[d.d]} sets</em> : null}
                 </span>
+                <button className="x" onClick={() => remove(d.d)} aria-label={`Delete ${d.d}`}>×</button>
               </li>
             ))}
           </ul>
           <p className="foot">
-            Training volume is shown alongside so heavy days and intake read together. Tap a row to
-            delete it.
+            Working sets are shown alongside so heavy days and intake read together. Delete a day
+            with the ×.
           </p>
         </section>
       )}
@@ -301,4 +350,20 @@ function describeGap(intake, burn) {
   if (Math.abs(diff) / burn < 0.08) return 'roughly maintenance'
   const per = Math.abs(Math.round(diff))
   return diff < 0 ? `about ${per} kcal under` : `about ${per} kcal over`
+}
+
+// Which profile fields are still standing between you and a target.
+function missingFor(S) {
+  const p = S.profile || {}
+  const out = []
+  if (!(Number(p.heightCm) > 0)) out.push('your height')
+  if (!p.sex) out.push('sex')
+  if (!ageFrom(p.dob)) out.push('date of birth')
+  if (!S.bodyweight?.length) out.push('a logged body weight')
+  return out
+}
+
+function listMissing(items) {
+  if (items.length <= 1) return items[0] || 'nothing'
+  return items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1]
 }

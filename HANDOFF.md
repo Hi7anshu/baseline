@@ -1,6 +1,7 @@
 # Handoff
 
-Written 2026-09-07. Read this plus `README.md` before changing anything.
+Written 2026-09-07, updated 2026-09-07 after the first real week of use. Read this plus
+`README.md` before changing anything.
 
 **Live:** https://hi7anshu.github.io/baseline/ · **Repo:** `Hi7anshu/baseline` (public, AGPL-3.0)
 · **Local:** `D:\opengym-hevy` (folder name predates the rename; the repo is `baseline`)
@@ -31,29 +32,25 @@ Two facts make the no-server design possible. Verify both still hold before assu
 | Area | Status |
 |---|---|
 | Recovery (fatigue + retention, body map, grouped muscles) | Done |
+| Recovery → Fuel lens (intake against training load) | Done — reports, never scores |
 | Training → Volume (sets/muscle, delt heads) | Done |
 | Training → Strength (e1RM per lift, PRs, stalls) | Done |
 | Training → Effort (RPE) | Done, hidden unless rated sets exist |
-| Body (measurements, body fat, FFMI, trend charts, profile) | Done |
+| Body (measurements, body fat, FFMI, trend charts, profile) | Done — all nine metrics chart |
 | Fuel (macros, targets, Claude prompt) | Done |
-| Data (CSV import, exercise identification, export) | Done |
-| Hevy API sync | **Written but never run against a real key** — see below |
-| Body-weight import | **Written, never tested on a real Hevy measurements export** |
+| Data (CSV import, exercise identification, export **and restore**) | Done |
+| Hevy API sync | **Written, never run against a real key** — he has no Pro, see below |
+| Body-weight import | Done — tested against his real file 2026-09-07 |
 
-### The one thing worth doing first
+### Hevy Pro: answered, and the answer is no
 
-**Find out whether he has Hevy Pro.** He said "not sure", but he successfully exported a workout
-CSV, and [Hevy's docs](https://help.hevyapp.com/hc/en-us/articles/38001424401943-How-to-Import-Strong-App-CSV-Files-and-Export-Your-Data-in-Hevy)
-plus several reviews say CSV export is Pro-only. If he *is* on Pro:
+He confirmed on 2026-09-07 that he has no Pro key and cannot test the API path. So:
 
-- `lib/hevy.js` sync works — automatic, incremental via `/v1/workouts/events`, no manual export.
-- `/v1/body_measurements` gives weight and measurements directly.
-- The whole "paste a CSV every week" flow becomes unnecessary.
-
-Test is 10 seconds: paste any key into Data → Automatic sync. A 403 means no Pro; a 401 means
-the key is wrong. Both are handled with distinct messages.
-
----
+- The CSV export path is the only one in use. `lib/hevy.js` sync stays in the tree, untested,
+  and activates if he ever upgrades — do not rip it out and do not build around it.
+- `/v1/body_measurements` is likewise unavailable. Body weight came in through the file import,
+  which means **the body-weight import path is now tested against a real file** and works.
+- Stop asking him to check. It is settled until he says otherwise.
 
 ## Working on it
 
@@ -78,6 +75,7 @@ node tools/check-hevy-names.mjs                      # his 7 problem exercises: 
 node tools/check-pipeline.mjs tools/hevy-fixture.csv # CSV -> state -> fatigue -> ETA
 node tools/check-strength.mjs tools/hevy-fixture.csv # e1RM progress; expect 14 of 21 lifts
 node tools/find-exercise.mjs "face+pull" "hip+thrust" # search the catalogue when adding aliases
+node tools/check-backup.mjs                          # export -> restore round trip
 ```
 
 `check-matching.mjs` reporting anything below 61/62 is a regression. The single expected miss is
@@ -112,8 +110,14 @@ missing features to a future reader:
   mean inventing a decay curve per head.
 - e1RM stops at 12 reps (openGym's cap). High-rep isolation, bodyweight and timed work therefore
   have no curve — 14 of 21 lifts in the fixture. Correct, not broken.
-- Nutrition is **not** wired into recovery scoring. Intake and volume share a timeline and
-  concrete things get flagged; no causal claim is made, because the data cannot support one.
+- Nutrition is **not** wired into recovery scoring, and the third Recovery lens does not change
+  that — it charts intake against working sets, flags protein per kilogram and the gap to
+  estimated burn, and ends with a card stating in as many words that no fatigue number moves.
+  He asked directly whether food was affecting the maps; the answer is no, and the lens exists so
+  the answer is visible in the app rather than only in a conversation. There is no validated
+  function from a day's calories to a percentage of muscle readiness, and openGym's model has no
+  input for one. If you are ever tempted to add a "recovery score" multiplier here, note that
+  nobody downstream could then tell an invented adjustment from a measured one.
 - Body weight change is coloured **neutral**. Down is a win on a cut and a loss on a bulk, and
   Baseline does not know which. Body fat, waist and lean mass do have a better direction.
 
@@ -140,6 +144,18 @@ Tell him to fully close and reopen the app after each deploy.
 const dbs = await indexedDB.databases(); for (const d of dbs) indexedDB.deleteDatabase(d.name);
 ```
 
+**A `min-height: 0` was the whole "sometimes I can't scroll" bug.** `.body` is a column-flex
+child with `overflow-y: auto`; flex children default to `min-height: auto`, so it grew to fit
+its content instead of scrolling inside the fixed-height shell, and with `body { overflow:
+hidden }` anything below the fold was simply unreachable. It only bit on long screens, which is
+why it read as intermittent. If a scroll complaint comes back, check that first, then check
+whether a new full-bleed element needs `touch-action: pan-y` (the body map did — a swipe
+starting on it did nothing at all).
+
+**Tap-to-delete on a row is a scrolling bug in disguise.** Body history and Fuel day rows used
+to delete on a tap anywhere in the row; a scroll that starts on a row fires it. Both now carry
+an explicit `×`. Do not reintroduce the pattern.
+
 **Python heredocs eat backslash escapes.** A `\'` inside a JSX string became a syntax error once.
 Prefer the Edit tool for code containing escapes.
 
@@ -147,10 +163,8 @@ Prefer the Edit tool for code containing escapes.
 
 ## Open items
 
-**Untested paths** — both are written and plausible but have never seen real data:
-- Hevy API sync (needs a Pro key).
-- Body-weight import. `parseBodyweight` handles Apple Health XML and generic date+weight CSV;
-  the exact shape of a Hevy *measurements* export is unknown. Get a real file before trusting it.
+**Untested path** — Hevy API sync. Written, plausible, never run against a real key, and it
+cannot be until he has Pro. Treat any change near it as unverified.
 
 **`Rowing Machine`** and anything else the catalogue lacks: resolvable by him in
 **Data → Unidentified exercises**, either by pointing at a catalogue exercise or naming muscles
@@ -159,12 +173,14 @@ directly. No code change needed.
 **Ideas not started**, roughly in value order:
 1. **Consistency heatmap** — `Heatmap.jsx` and `streakWeeks()` exist in openGym, not yet vendored.
    Cheap, and "did I actually turn up" pairs naturally with the rest.
-2. **Nutrition trend chart** — Fuel currently shows day rows and averages; `LineChart` is already
-   vendored, so calories/protein over time is a small addition.
-3. **Per-measurement charts** — Body charts weight, body fat and waist. Arm, thigh, chest etc. are
-   logged but not plotted.
-4. **`progression.js`** — openGym's next-weight suggestions. Lower value, since he programmes in
+2. **`progression.js`** — openGym's next-weight suggestions. Lower value, since he programmes in
    Hevy and would act there, not here.
+
+Done since the first handoff: per-measurement trend charts (all nine metrics, and switching to an
+empty one no longer unmounts the card), a nutrition-over-time chart as the Recovery → Fuel lens,
+backup restore, and estimated-1RM labelling — the strength list printed `40 kg` for a 30 kg × 10
+set, which is Epley working correctly and reading as a weight he had never lifted. Estimates now
+carry `≈`, the card says so, and each lift shows its heaviest real set beside the projection.
 
 ---
 

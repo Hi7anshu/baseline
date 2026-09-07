@@ -170,18 +170,22 @@ function Log({ S, commitState }) {
             {entries.slice(0, 20).map(m => {
               const d = derive(m, profile, weightNear(S.bodyweight, m.d))
               return (
-                <li key={m.d} className="row" onClick={() => remove(m.d)}>
+                <li key={m.d} className="row static">
                   <span className="r-name">{m.d}</span>
                   <span className="hist-cells">
                     {m.weight ? <em>{m.weight} kg</em> : null}
                     {m.waist ? <em>waist {m.waist}</em> : null}
                     {d.bodyFat ? <em>{d.bodyFat.toFixed(1)}% bf</em> : null}
                   </span>
+                  <button className="x" onClick={() => remove(m.d)} aria-label={`Delete ${m.d}`}>×</button>
                 </li>
               )
             })}
           </ul>
-          <p className="foot">Tap a row to delete it.</p>
+          <p className="foot">
+            Showing the most recent {Math.min(entries.length, 20)} of {entries.length}. Delete a
+            reading with the ×.
+          </p>
         </section>
       )}
     </>
@@ -194,58 +198,100 @@ function Log({ S, commitState }) {
  * Single readings carry the method's full error; the direction across several does not, so the
  * chart is arguably more honest than the headline number above it. Weight comes from the whole
  * weigh-in series rather than only measurement days, since it is usually logged far more often.
+ *
+ * Every measurement that can be logged can be charted. Only metrics with data are offered, and
+ * a metric that empties out says so in place of the chart — an earlier version returned null
+ * for an empty series, which took the whole card away including the buttons, so switching
+ * metric looked like the screen had broken.
  */
+
+// Derived metrics first: they answer the question the tape was picked up for. The raw
+// circumferences follow in the order they are measured.
+const TRENDS = [
+  { id: 'weight', label: 'Weight', unit: ' kg', dp: 1 },
+  { id: 'bodyfat', label: 'Body fat', unit: '%', dp: 1 },
+  { id: 'leanmass', label: 'Lean mass', unit: ' kg', dp: 1 },
+  ...FIELDS.filter(f => f.key !== 'weight').map(f => ({ id: f.key, label: f.label, unit: ' cm', dp: 1 })),
+]
+
 function Trends({ S, profile, entries }) {
   const [metric, setMetric] = useState('weight')
 
-  const series = useMemo(() => {
-    const at = iso => new Date(iso + 'T12:00:00').getTime()
+  const at = iso => new Date(iso + 'T12:00:00').getTime()
 
-    if (metric === 'weight') {
-      return (S.bodyweight || []).map(b => ({ t: at(b.d), d: b.d, y: b.w }))
+  // Built once for every metric rather than for the selected one, because which buttons to
+  // show depends on which series have anything in them.
+  const all = useMemo(() => {
+    const derived = entries.map(m => ({ m, v: derive(m, profile, weightNear(S.bodyweight, m.d)) }))
+    const out = {}
+
+    out.weight = (S.bodyweight || []).map(b => ({ t: at(b.d), d: b.d, y: b.w }))
+    out.bodyfat = derived.filter(x => x.v.bodyFat != null)
+      .map(x => ({ t: at(x.m.d), d: x.m.d, y: round1(x.v.bodyFat) }))
+    out.leanmass = derived.filter(x => x.v.fatFreeKg != null)
+      .map(x => ({ t: at(x.m.d), d: x.m.d, y: round1(x.v.fatFreeKg) }))
+
+    for (const f of FIELDS) {
+      if (f.key === 'weight') continue
+      out[f.key] = entries.filter(m => m[f.key] > 0).map(m => ({ t: at(m.d), d: m.d, y: m[f.key] }))
     }
-    if (metric === 'waist') {
-      return entries.filter(m => m.waist > 0).map(m => ({ t: at(m.d), d: m.d, y: m.waist }))
-    }
-    return entries
-      .map(m => ({ m, v: derive(m, profile, weightNear(S.bodyweight, m.d)) }))
-      .filter(x => x.v.bodyFat != null)
-      .map(x => ({ t: at(x.m.d), d: x.m.d, y: Math.round(x.v.bodyFat * 10) / 10 }))
-  }, [metric, S.bodyweight, entries, profile])
 
-  const sorted = useMemo(() => [...series].sort((a, b) => a.t - b.t), [series])
-  if (!sorted.length) return null
+    for (const k of Object.keys(out)) out[k].sort((a, b) => a.t - b.t)
+    return out
+  }, [S.bodyweight, entries, profile])
 
-  const first = sorted[0].y
-  const last = sorted[sorted.length - 1].y
-  const change = last - first
-  const unit = metric === 'weight' ? ' kg' : metric === 'waist' ? ' cm' : '%'
+  const available = TRENDS.filter(t => all[t.id]?.length)
+  if (!available.length) return null
+
+  // A metric can lose its last reading while selected — fall back rather than showing a
+  // button that is on for a series nobody can see.
+  const active = available.some(t => t.id === metric) ? metric : available[0].id
+  const spec = TRENDS.find(t => t.id === active)
+  const sorted = all[active] || []
+
+  const first = sorted[0]?.y
+  const last = sorted[sorted.length - 1]?.y
+  const change = sorted.length > 1 ? last - first : null
 
   return (
     <section className="card">
       <h2 className="c-h">Trend</h2>
-      <div className="seg">
-        {[['weight', 'Weight'], ['bodyfat', 'Body fat'], ['waist', 'Waist']].map(([id, label]) => (
-          <button key={id} className={'seg-b' + (metric === id ? ' on' : '')} onClick={() => setMetric(id)}>
-            {label}
+      <div className="seg wrap">
+        {available.map(t => (
+          <button key={t.id} className={'seg-b' + (active === t.id ? ' on' : '')} onClick={() => setMetric(t.id)}>
+            {t.label}
           </button>
         ))}
       </div>
-      <div className="chart">
-        <LineChart points={sorted} h={160} unit={unit} color="var(--accent)" />
-      </div>
-      {sorted.length > 1 && (
+
+      {sorted.length ? (
+        <div className="chart">
+          <LineChart points={sorted} h={160} unit={spec.unit} color="var(--accent)" />
+        </div>
+      ) : (
+        <p className="p" style={{ margin: 0 }}>
+          Nothing logged for {spec.label.toLowerCase()} yet. Add it under <strong>Latest → Add</strong>{' '}
+          and it charts from the second reading.
+        </p>
+      )}
+
+      {sorted.length > 0 && (
         <p className="foot">
-          {sorted.length} readings since {sorted[0].d} —{' '}
-          {Math.abs(change) < 0.05
-            ? 'no net change'
-            : `${change > 0 ? 'up' : 'down'} ${Math.abs(change).toFixed(1)}${unit.trim()}`}.
-          {metric === 'bodyfat' && ' A single body-fat reading carries the full error of the method; the direction across several is the trustworthy part.'}
+          {sorted.length} reading{sorted.length === 1 ? '' : 's'} since {sorted[0].d}
+          {change == null
+            ? ' — one reading is a dot, not a direction.'
+            : Math.abs(change) < 0.05
+              ? ' — no net change.'
+              : ` — ${change > 0 ? 'up' : 'down'} ${Math.abs(change).toFixed(spec.dp)}${spec.unit.trim()}.`}
+          {active === 'bodyfat' && ' A single body-fat reading carries the full error of the method; the direction across several is the trustworthy part.'}
+          {active === 'leanmass' && ' Lean mass is derived from the body-fat estimate and inherits its error, so read the slope rather than the number.'}
         </p>
       )}
     </section>
   )
 }
+
+const round1 = v => Math.round(v * 10) / 10
 
 function Stat({ label, value, unit, delta, estimate, good }) {
   return (
@@ -349,6 +395,15 @@ function Effects({ S, profile }) {
   const goals = targets(profile, weightKg)
   const hasBodyFat = Number(profile.heightCm) > 0 && !!profile.sex
 
+  // Naming the field that is actually missing beats restating the whole list: a form that says
+  // "needs height, date of birth and sex" when two of the three are filled in reads as though
+  // nothing had been saved.
+  const missing = []
+  if (!(Number(profile.heightCm) > 0)) missing.push('height')
+  if (!profile.sex) missing.push('sex')
+  if (!ageFrom(profile.dob)) missing.push('date of birth')
+  if (!weightKg) missing.push('a logged body weight')
+
   return (
     <div className="effects">
       <h3>What this enables</h3>
@@ -363,11 +418,21 @@ function Effects({ S, profile }) {
           <strong>Calorie and macro targets on Fuel</strong> —{' '}
           {goals
             ? `maintain about ${goals.tdee} kcal, protein ${goals.proteinLow}–${goals.proteinHigh} g.`
-            : !weightKg
-              ? 'needs a logged body weight.'
-              : 'needs height, date of birth and sex.'}
+            : `needs ${listMissing(missing)}.`}
+        </li>
+        <li className={goals ? 'ok' : 'flat'}>
+          <strong>The Fuel lens under Recovery</strong> —{' '}
+          {goals
+            ? 'intake is drawn against that burn estimate and your protein floor.'
+            : 'the same fields — without them intake has no reference line to sit against.'}
         </li>
       </ul>
     </div>
   )
+}
+
+// "height and sex", not "height, sex" — this is read as a sentence, not a list.
+function listMissing(items) {
+  if (items.length <= 1) return items[0] || 'nothing'
+  return items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1]
 }

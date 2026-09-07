@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { parseImport, parseBodyweight, mergeImport } from '../vendor/lib/import-csv.js'
 import { remapParsed, reresolveCustoms } from '../lib/match.js'
 import { sync, fetchUser, HevyError } from '../lib/hevy.js'
-import { exportJSON, emptyState } from '../lib/store.js'
+import { exportJSON, parseBackup, emptyState } from '../lib/store.js'
 import Unidentified from './Unidentified.jsx'
 
 /**
@@ -19,6 +19,7 @@ export default function Data({ S, settings, commitState, commitSettings }) {
   const [key, setKey] = useState(settings.apiKey || '')
   const file = useRef(null)
   const weightFile = useRef(null)
+  const backupFile = useRef(null)
 
   const done = (text, unmatched) => { setMsg({ text, unmatched }); setErr(null); setBusy(null) }
   const failed = text => { setErr(text); setMsg(null); setBusy(null) }
@@ -105,6 +106,42 @@ export default function Data({ S, settings, commitState, commitSettings }) {
       done(`Synced. ${stats.added} workouts in, ${stats.deleted} removed, ${stats.total} total.`)
     } catch (ex) {
       failed(ex instanceof HevyError ? ex.message : (ex.message || 'Sync failed.'))
+    }
+  }
+
+  // A restore replaces everything. That is stated in the confirm rather than softened, because
+  // measurements and nutrition live only here — Hevy has never held them, so an accidental
+  // restore over a month of logging is not recoverable from anywhere.
+  async function onBackupFile(e) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setBusy('Reading backup…'); setErr(null); setMsg(null)
+    try {
+      const { state, settings: restored, counts } = parseBackup(await f.text(), settings)
+      const when = counts.exportedAt ? new Date(counts.exportedAt).toLocaleDateString() : 'an unknown date'
+      const ok = confirm(
+        `Restore the backup from ${when}?
+
+`
+        + `It holds ${counts.workouts} workouts, ${counts.bodyweight} weigh-ins, `
+        + `${counts.measurements} measurements and ${counts.nutrition} logged days.
+
+`
+        + `This replaces what is on this device — you currently have ${S.workouts.length} workouts, `
+        + `${S.measurements?.length || 0} measurements and ${S.nutrition?.length || 0} logged days. `
+        + `Measurements and nutrition exist nowhere else, so anything not in the file is gone.`,
+      )
+      if (!ok) { setBusy(null); return }
+      await commitState(reresolveCustoms(state))
+      await commitSettings(restored)
+      done(
+        `Restored ${counts.workouts} workouts, ${counts.measurements} measurements and `
+        + `${counts.nutrition} logged days.`,
+      )
+    } catch (ex) {
+      failed(ex.message || 'Could not read that backup.')
+    } finally {
+      if (backupFile.current) backupFile.current.value = ''
     }
   }
 
@@ -208,8 +245,19 @@ export default function Data({ S, settings, commitState, commitSettings }) {
           Everything lives in this browser and on Hevy's servers. Nothing is uploaded anywhere else
           and no server holds a copy, so there is nothing to keep running.
         </p>
+        <input ref={backupFile} type="file" accept=".json,application/json" onChange={onBackupFile} hidden />
         <div className="btn-row">
           <button className="btn" onClick={() => exportJSON(S, settings)}>Export backup</button>
+          <button className="btn" disabled={!!busy} onClick={() => backupFile.current?.click()}>
+            Restore backup
+          </button>
+        </div>
+        <p className="foot">
+          Training can always be re-imported from Hevy. Measurements, nutrition and your profile
+          cannot — they exist only on this device and in the backup file, so keep one somewhere
+          that is not this phone. A restore replaces what is here rather than merging into it.
+        </p>
+        <div className="btn-row" style={{ marginTop: 10 }}>
           <button className="btn danger" onClick={onClear}>Clear local copy</button>
         </div>
       </section>

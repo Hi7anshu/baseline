@@ -28,10 +28,18 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+/* Kills the 300ms tap delay and, more importantly, stops a tap that turns into a drag from
+   being swallowed as a click on the row underneath. */
+button, .row, .seg-b, .tab { touch-action: manipulation; }
+
 html, body, #root { height: 100%; }
+/* Dynamic viewport units where they exist: on mobile Safari and Chrome a 100% height is the
+   viewport *with* the address bar, so the tab strip sat under it until the bar collapsed. */
+@supports (height: 100dvh) { html, body, #root { height: 100dvh; } }
 
 body {
   margin: 0;
+  overflow: hidden;   /* the scroller is .body — two nested scrollers fight each other */
   background: var(--bg);
   color: var(--ink);
   font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -41,7 +49,7 @@ body {
 
 .boot { display: grid; place-items: center; height: 100%; color: var(--dim); }
 
-.app { display: flex; flex-direction: column; height: 100%; }
+.app { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 
 /* ------------------------------------------------------------------ chrome -- */
 
@@ -57,16 +65,25 @@ body {
 .top-sub { color: var(--faint); font-size: 13px; margin-left: auto; }
 
 .body {
-  flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  /* `min-height: 0` is doing real work: a column flex child defaults to min-height:auto, so
+     this box grew to fit its content instead of scrolling inside the fixed-height app shell.
+     With body overflow hidden that made long screens simply unreachable below the fold, which
+     is the "sometimes I can't scroll" bug. */
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
   padding: 12px var(--pad) 24px;
   display: flex; flex-direction: column; gap: 12px;
 }
 
 .tabs {
   display: grid; grid-template-columns: repeat(5, 1fr);
+  flex: 0 0 auto;
   border-top: 1px solid var(--line);
-  background: rgba(13, 17, 23, .92);
-  backdrop-filter: blur(12px);
+  /* Opaque rather than blurred. Nothing scrolls under the tab bar — it sits outside the
+     scroller — so the blur bought nothing and cost a composited layer repainted every frame,
+     which is most of what made scrolling feel like it was catching. */
+  background: #0d1117;
   padding-bottom: env(safe-area-inset-bottom);
 }
 .tab {
@@ -405,3 +422,42 @@ select.input { appearance: none; }
 .lift-detail .d-grid .v small { font-size: 11px; color: var(--faint); font-weight: 500; }
 .r-eta.up { color: var(--ready); }
 .r-eta.down { color: var(--fatigued); }
+
+
+/* -------------------------------------------------- scroll-safe controls -- */
+
+/* Rows that only display: the delete lives on its own button, so a scroll that starts on a row
+   cannot fire a confirm dialog. */
+.row.static { cursor: default; }
+.row.static .x {
+  appearance: none; border: 0; background: none; color: var(--faint);
+  font-size: 19px; line-height: 1; padding: 4px 6px; margin: 0 -4px;
+  border-radius: 8px; cursor: pointer;
+}
+.row.static .x:hover, .row.static .x:active { background: #0f141b; color: var(--fatigued); }
+.day-row, .row.day-row { grid-template-columns: 1fr auto auto; }
+
+/* Segmented control with more than four options — measurement trends run to nine. */
+.seg.wrap { flex-wrap: wrap; }
+.seg.wrap .seg-b { flex: 1 0 auto; padding: 7px 12px; }
+
+/* Body map: let a vertical drag scroll the page. The muscles are tap targets, and without this
+   a swipe starting on the map did nothing at all. */
+.bodymap { touch-action: pan-y; }
+
+/* ------------------------------------------------------------ fuel chart -- */
+
+.fuel-chart svg { overflow: visible; }
+.fc-key {
+  display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px;
+  font-size: 11.5px; color: var(--faint);
+}
+.fc-key span { display: inline-flex; align-items: center; gap: 5px; }
+.fc-key i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
+.fc-key .k-line { background: var(--l4); }
+.fc-key .k-bar { height: 9px; width: 9px; border-radius: 2px; background: var(--accent); opacity: .45; }
+.fc-key .k-goal { background: repeating-linear-gradient(90deg, var(--recovering) 0 4px, transparent 4px 7px); }
+
+/* The estimate marker, wherever a projected number is printed as if it were a measured one. */
+.lift-v .est { color: var(--faint); font-weight: 500; margin-right: 1px; }
+.d-grid .v small { white-space: nowrap; }
