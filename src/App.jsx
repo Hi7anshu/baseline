@@ -91,7 +91,11 @@ export default function App() {
     <div className="app">
       <header className="top">
         <h1>{TABS.find(t => t.id === tab).label}</h1>
-        {S.workouts.length > 0 && <span className="top-sub">{S.workouts.length} workouts</span>}
+        {S.workouts.length > 0 && (
+          <span className="top-sub">
+            {S.workouts.length} workout{S.workouts.length === 1 ? '' : 's'}
+          </span>
+        )}
       </header>
 
       <main className="body">

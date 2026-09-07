@@ -3,6 +3,7 @@ import BodyMap from '../vendor/components/BodyMap.jsx'
 import MuscleList from '../components/MuscleList.jsx'
 import { loadOfWorkouts } from '../vendor/lib/muscles.js'
 import { groupValues, SUM } from '../lib/groups.js'
+import { deltVolume, HEADS } from '../lib/delts.js'
 import {
   hasEffort, displayScale, scaleName, toScale, isHardSet,
   effortSummary, effortHistogram, effortWeeks, MIN_RATED,
@@ -23,16 +24,25 @@ const WINDOWS = [
 /** How much work went in, and how hard it was — the two halves of a training block. */
 export default function Training({ S }) {
   const [lens, setLens] = useState('volume')
+
+  // Effort is optional in Hevy and off by default. A permanently empty tab is worse than no
+  // tab, so the switcher only appears once there is rated work to switch to — and reappears by
+  // itself if RPE is ever turned on.
+  const rated = useMemo(() => hasEffort(S), [S])
+  const showing = rated ? lens : 'volume'
+
   return (
     <>
-      <div className="seg">
-        {LENSES.map(l => (
-          <button key={l.id} className={'seg-b' + (lens === l.id ? ' on' : '')} onClick={() => setLens(l.id)}>
-            {l.label}
-          </button>
-        ))}
-      </div>
-      {lens === 'volume' ? <Volume S={S} /> : <Effort S={S} />}
+      {rated && (
+        <div className="seg">
+          {LENSES.map(l => (
+            <button key={l.id} className={'seg-b' + (showing === l.id ? ' on' : '')} onClick={() => setLens(l.id)}>
+              {l.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {showing === 'volume' ? <Volume S={S} /> : <Effort S={S} />}
     </>
   )
 }
@@ -42,6 +52,7 @@ export default function Training({ S }) {
 function Volume({ S }) {
   const [days, setDays] = useState(30)
   const [hardOnly, setHardOnly] = useState(false)
+  const rated = useMemo(() => hasEffort(S), [S])
 
   const workouts = useMemo(() => {
     const cutoff = Date.now() - days * 86400000
@@ -53,8 +64,22 @@ function Volume({ S }) {
     [workouts, hardOnly],
   )
 
+  const delts = useMemo(() => deltVolume(workouts, hardOnly ? isHardSet : undefined), [workouts, hardOnly])
+
   // Sets add up across a group's muscles — unlike fatigue, the total is the meaningful number.
-  const groups = useMemo(() => groupValues(load, SUM).sort((a, b) => b.value - a.value), [load])
+  // Shoulders is the exception: the dataset models one deltoid, so its breakdown is inferred
+  // from exercise names instead (see lib/delts.js) and swapped in here.
+  const groups = useMemo(() => {
+    const base = groupValues(load, SUM)
+    return base
+      .map(g => g.id !== 'shoulders' ? g : {
+        ...g,
+        muscles: HEADS
+          .map(h => ({ slug: h.id, name: h.name, value: delts[h.id] }))
+          .sort((a, b) => b.value - a.value),
+      })
+      .sort((a, b) => b.value - a.value)
+  }, [load, delts])
   const total = groups.reduce((a, g) => a + g.value, 0)
   const untouched = Object.values(load).filter(v => !(v > 0)).length
 
@@ -77,10 +102,12 @@ function Volume({ S }) {
 
         <BodyMap className="heat-volume" load={load} />
 
-        <label className="check">
-          <input type="checkbox" checked={hardOnly} onChange={e => setHardOnly(e.target.checked)} />
-          <span>Hard sets only (RPE 7+)</span>
-        </label>
+        {rated && (
+          <label className="check">
+            <input type="checkbox" checked={hardOnly} onChange={e => setHardOnly(e.target.checked)} />
+            <span>Hard sets only (RPE 7+)</span>
+          </label>
+        )}
       </section>
 
       <section className="card">
@@ -95,6 +122,15 @@ function Volume({ S }) {
           An exercise counts toward every muscle it lists as a primary or secondary target, so
           these are effective sets rather than a plain per-exercise count. Tap a group to see
           which muscles inside it are carrying the work — and which are being missed.
+          {delts.total > 0 && (
+            <>
+              {' '}Shoulders is split by exercise name rather than by the dataset, which models a
+              single deltoid
+              {delts.unclassified > 0.05
+                ? ` — ${Math.round((delts.unclassified / delts.total) * 100)}% of your shoulder work names no head and is spread evenly across the three.`
+                : '.'}
+            </>
+          )}
         </p>
       </section>
     </>

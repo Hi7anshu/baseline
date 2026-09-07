@@ -341,3 +341,48 @@ select.input { appearance: none; }
 .reads li.low { border-left-color: var(--recovering); }
 .reads li.high { border-left-color: var(--recovering); }
 .reads li.flat { border-left-color: var(--line); }
+
+/* -------------------------------------------------------------- charts -- */
+
+/* The vendored LineChart is styled against openGym's variable names. Bridging them here keeps
+   that file a verbatim copy rather than forking it over four colours. */
+:root {
+  --acc: var(--accent);
+  --surface-2: #0f141b;
+  --label-2: var(--dim);
+  --label-3: var(--faint);
+}
+
+.chart { width: 100%; overflow: hidden; }
+.chart svg { display: block; width: 100%; height: auto; }
+.chart-i { position: relative; touch-action: pan-y; }
+.ctip {
+  position: absolute; left: 0; top: 0; background: var(--surface-2);
+  border-radius: 8px; padding: 4px 10px; font-size: 12px; font-weight: 500; white-space: nowrap;
+  max-width: calc(100% - 8px); overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none; box-shadow: 0 6px 18px -4px rgba(0, 0, 0, .4);
+  color: var(--ink); border: 1px solid var(--line);
+}
+.empty.small { padding: 22px; font-size: 13px; color: var(--faint); text-align: center; }
+
+/* -------------------------------------------------------------- prompt -- */
+
+.prompt {
+  margin: 0; padding: 13px 14px; background: #0f141b; border: 1px solid var(--line);
+  border-radius: 10px; color: var(--dim); font-size: 12.5px; line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word; overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  -webkit-user-select: all; user-select: all;
+}
+
+.seg.tight { margin: 0; width: auto; flex: none; }
+.seg.tight .seg-b { padding: 5px 11px; font-size: 12px; flex: none; }
+
+/* ------------------------------------------------------------- effects -- */
+
+.effects { margin-top: 6px; padding-top: 16px; border-top: 1px solid var(--line); }
+.effects h3 {
+  margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--dim);
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.effects .reads li { font-size: 13px; padding: 10px 12px; }

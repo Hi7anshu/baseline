@@ -145,3 +145,53 @@ export function proteinVerdict(gramsPerKg) {
   if (gramsPerKg > PROTEIN_HIGH) return { state: 'high', text: `above ${PROTEIN_HIGH} g/kg` }
   return { state: 'ok', text: `in the ${PROTEIN_LOW}–${PROTEIN_HIGH} g/kg range` }
 }
+
+/**
+ * What the profile implies you should be eating.
+ *
+ * This is the missing feedback loop for the profile: entering height, age and activity should
+ * visibly produce something, not just sit in a form. Protein is given as the range rather than
+ * a single figure because the evidence supports a range; fat gets a floor rather than a target
+ * because going far under it is the failure mode; carbs are simply what is left, which is the
+ * honest description of how they are usually set.
+ *
+ * @param {object} profile Height, sex, dob, activity.
+ * @param {number} weightKg Latest body weight.
+ * @returns {object|null} Targets, or null when the profile cannot support them.
+ */
+export function targets(profile, weightKg) {
+  const tdee = estimateTdee(profile, weightKg)
+  const w = Number(weightKg)
+  if (!tdee || !(w > 0)) return null
+
+  const proteinLow = Math.round(w * PROTEIN_LOW)
+  const proteinHigh = Math.round(w * PROTEIN_HIGH)
+  const fatFloor = Math.round(w * 0.8)
+
+  // Carbs take whatever calories the protein midpoint and the fat floor leave behind.
+  const proteinMid = (proteinLow + proteinHigh) / 2
+  const carbs = Math.max(0, Math.round((tdee - proteinMid * 4 - fatFloor * 9) / 4))
+
+  return {
+    tdee: Math.round(tdee),
+    cut: Math.round(tdee * 0.8),        // ~20% deficit
+    gain: Math.round(tdee * 1.1),       // ~10% surplus
+    proteinLow,
+    proteinHigh,
+    fatFloor,
+    carbs,
+  }
+}
+
+/** The prompt to hand Claude so its reply parses cleanly on the first try. */
+export const CLAUDE_PROMPT = `I'm logging my food intake for the day.
+
+I'll describe what I ate, with rough quantities. Estimate the macros as accurately as you can, and ask me only if something is genuinely ambiguous enough to change the total significantly.
+
+Reply with ONE line, in exactly this format and nothing else:
+
+Total: <calories> kcal | Protein <grams>g | Carbs <grams>g | Fat <grams>g
+
+No breakdown, no notes, no preamble — just that line, so I can paste it straight into my tracker.
+
+Here's what I ate today:`

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
+import LineChart from '../vendor/components/LineChart.jsx'
 import { FIELDS, derive, weightNear } from '../lib/body.js'
-import { ACTIVITY, ageFrom } from '../lib/nutrition.js'
+import { ACTIVITY, ageFrom, targets } from '../lib/nutrition.js'
 
 const todayISO = () => {
   const d = new Date()
@@ -133,7 +134,7 @@ function Log({ S, commitState }) {
         {!open && latest && (
           <>
             <div className="stat-grid">
-              <Stat label="Weight" value={fmt(now.weight, 1)} unit="kg" delta={delta(now.weight, then?.weight, 1)} />
+              <Stat label="Weight" value={fmt(now.weight, 1)} unit="kg" delta={delta(now.weight, then?.weight, 1, null)} />
               <Stat label="Waist : height" value={fmt(now.whtr, 2)} good={now.whtr != null && now.whtr < 0.5}
                 delta={delta(now.whtr, then?.whtr, 2, true)} />
               <Stat label="Body fat" value={fmt(now.bodyFat, 1)} unit="%" estimate
@@ -160,6 +161,8 @@ function Log({ S, commitState }) {
         )}
       </section>
 
+      <Trends S={S} profile={profile} entries={entries} />
+
       {entries.length > 0 && (
         <section className="card">
           <h2 className="c-h">History</h2>
@@ -185,6 +188,65 @@ function Log({ S, commitState }) {
   )
 }
 
+/**
+ * The trend, which is the part of a tape measure that can be trusted.
+ *
+ * Single readings carry the method's full error; the direction across several does not, so the
+ * chart is arguably more honest than the headline number above it. Weight comes from the whole
+ * weigh-in series rather than only measurement days, since it is usually logged far more often.
+ */
+function Trends({ S, profile, entries }) {
+  const [metric, setMetric] = useState('weight')
+
+  const series = useMemo(() => {
+    const at = iso => new Date(iso + 'T12:00:00').getTime()
+
+    if (metric === 'weight') {
+      return (S.bodyweight || []).map(b => ({ t: at(b.d), d: b.d, y: b.w }))
+    }
+    if (metric === 'waist') {
+      return entries.filter(m => m.waist > 0).map(m => ({ t: at(m.d), d: m.d, y: m.waist }))
+    }
+    return entries
+      .map(m => ({ m, v: derive(m, profile, weightNear(S.bodyweight, m.d)) }))
+      .filter(x => x.v.bodyFat != null)
+      .map(x => ({ t: at(x.m.d), d: x.m.d, y: Math.round(x.v.bodyFat * 10) / 10 }))
+  }, [metric, S.bodyweight, entries, profile])
+
+  const sorted = useMemo(() => [...series].sort((a, b) => a.t - b.t), [series])
+  if (!sorted.length) return null
+
+  const first = sorted[0].y
+  const last = sorted[sorted.length - 1].y
+  const change = last - first
+  const unit = metric === 'weight' ? ' kg' : metric === 'waist' ? ' cm' : '%'
+
+  return (
+    <section className="card">
+      <h2 className="c-h">Trend</h2>
+      <div className="seg">
+        {[['weight', 'Weight'], ['bodyfat', 'Body fat'], ['waist', 'Waist']].map(([id, label]) => (
+          <button key={id} className={'seg-b' + (metric === id ? ' on' : '')} onClick={() => setMetric(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="chart">
+        <LineChart points={sorted} h={160} unit={unit} color="var(--accent)" />
+      </div>
+      {sorted.length > 1 && (
+        <p className="foot">
+          {sorted.length} readings since {sorted[0].d} —{' '}
+          {Math.abs(change) < 0.05
+            ? 'no net change'
+            : `${change > 0 ? 'up' : 'down'} ${Math.abs(change).toFixed(1)}${unit.trim()}`}.
+          {metric === 'bodyfat' && ' A single body-fat reading carries the full error of the method; the direction across several is the trustworthy part.'}
+        </p>
+      )}
+    </section>
+  )
+}
+
 function Stat({ label, value, unit, delta, estimate, good }) {
   return (
     <div className="stat">
@@ -199,17 +261,18 @@ function Stat({ label, value, unit, delta, estimate, good }) {
 
 const fmt = (v, dp = 1) => (v == null ? '—' : Number(v).toFixed(dp))
 
-// `lowerIsBetter` only decides the colour, never the sign — the arrow always shows the real
-// direction of change.
+// `lowerIsBetter` only decides the colour, never the sign — the number always shows the real
+// direction. Pass null for a metric with no better direction: body weight moving down is a win
+// on a cut and a loss on a bulk, and Baseline does not know which you are doing, so it stays
+// neutral rather than asserting one.
 function delta(now, before, dp, lowerIsBetter = false) {
   if (now == null || before == null) return null
   const diff = now - before
   if (Math.abs(diff) < 10 ** -dp / 2) return { dir: 'flat', text: 'no change' }
+  const text = `${diff > 0 ? '+' : ''}${diff.toFixed(dp)}`
+  if (lowerIsBetter === null) return { dir: 'flat', text }
   const better = lowerIsBetter ? diff < 0 : diff > 0
-  return {
-    dir: better ? 'good' : 'bad',
-    text: `${diff > 0 ? '+' : ''}${diff.toFixed(dp)}`,
-  }
+  return { dir: better ? 'good' : 'bad', text }
 }
 
 /* --------------------------------------------------------------- profile -- */
@@ -268,6 +331,43 @@ function Profile({ S, commitState }) {
           {ACTIVITY.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
         </select>
       </label>
+
+      <Effects S={S} profile={p} />
     </section>
+  )
+}
+
+/**
+ * What the profile is actually doing, shown where it is entered.
+ *
+ * A form that silently feeds calculations two tabs away reads as if nothing happened. This
+ * names each consequence and, when something is still missing, says exactly which field would
+ * unlock it — so the form can be finished without hunting for what it was for.
+ */
+function Effects({ S, profile }) {
+  const weightKg = S.bodyweight?.length ? S.bodyweight[S.bodyweight.length - 1].w : null
+  const goals = targets(profile, weightKg)
+  const hasBodyFat = Number(profile.heightCm) > 0 && !!profile.sex
+
+  return (
+    <div className="effects">
+      <h3>What this enables</h3>
+      <ul className="reads">
+        <li className={hasBodyFat ? 'ok' : 'flat'}>
+          <strong>Body fat, BMI, lean mass, FFMI</strong> —{' '}
+          {hasBodyFat
+            ? 'active on Measurements, once neck and waist are logged.'
+            : 'needs height and sex.'}
+        </li>
+        <li className={goals ? 'ok' : 'flat'}>
+          <strong>Calorie and macro targets on Fuel</strong> —{' '}
+          {goals
+            ? `maintain about ${goals.tdee} kcal, protein ${goals.proteinLow}–${goals.proteinHigh} g.`
+            : !weightKg
+              ? 'needs a logged body weight.'
+              : 'needs height, date of birth and sex.'}
+        </li>
+      </ul>
+    </div>
   )
 }

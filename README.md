@@ -46,14 +46,16 @@ what has gone stale from not being trained. They are opposite instructions, so t
 screen. Green is good on both.
 
 **Training** — *Volume* (effective sets per muscle, on a neutral blue scale because volume has
-no good or bad end) and *Effort* (RPE spread and weekly trend).
+no good or bad end). Shoulders breaks down into front / side / rear delts. *Effort* (RPE spread
+and weekly trend) appears only once rated sets exist, since Hevy has RPE off by default.
 
 **Body** — weight, neck, waist, hips, chest, arm, thigh, calf. Derives waist-to-height, body
-fat, lean mass, BMI and FFMI. Exists because Hevy gates everything past weight and waist behind
-Pro.
+fat, lean mass, BMI and FFMI, and charts each over time. Profile lists what it unlocks and what
+is still missing. Exists because Hevy gates everything past weight and waist behind Pro.
 
-**Fuel** — daily calories and macros. Paste what your phone's Claude gives you and the fields
-fill in; it reads `Total: 2,150 kcal | Protein 148g …` and most other phrasings.
+**Fuel** — daily calories and macros, with the entry form always open. A copyable prompt makes
+Claude reply in exactly the format the paste box reads. Calorie and macro targets are computed
+from your profile.
 
 **Data** — import, sync, export, and identifying exercises the catalogue does not know.
 
@@ -113,6 +115,7 @@ src/
     match.js       exercise-name overlay and manual assignment
     eta.js         recovery-time arithmetic
     groups.js      18 muscles -> 6 groups, with per-view roll-up
+    delts.js       front/side/rear split, inferred from exercise names
     body.js        waist-to-height, Navy body fat, lean mass, FFMI
     nutrition.js   macro parsing, TDEE estimate, weekly summaries
     store.js       IndexedDB persistence
@@ -161,7 +164,16 @@ a straight file copy. Everything project-specific sits outside it and layers on 
   reliable on direction, so read the trend, not the digit. Lean mass and FFMI are derived from
   it and inherit that error; all three are marked ≈.
 - **Estimated burn** — Mifflin-St Jeor scaled by a self-reported activity level. A reference
-  line for a week of intake, not a target.
+  line for a week of intake, not a target. Protein is given as a range because the evidence is a
+  range; fat as a floor; carbs as whatever the other two leave.
+- **Delt heads** — openGym models and draws a single deltoid, so front/side/rear cannot be
+  separated on the map or in fatigue without inventing a decay curve per head. Volume *can* be
+  split, because the exercise name says which head it is, so the breakdown is offered there only
+  and labelled as inferred. Movements whose head cannot be read are spread evenly across the
+  three and reported as a percentage.
+- **Body weight change is shown neutrally.** Down is a win on a cut and a loss on a bulk, and
+  Baseline does not know which you are doing. Body fat, waist and lean mass do have an
+  unambiguous better direction and are coloured accordingly.
 
 Nutrition and training are shown on one timeline, and concrete things are flagged — protein
 against body weight, intake against estimated burn. Baseline does **not** compute a recovery
