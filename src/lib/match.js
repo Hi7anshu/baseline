@@ -6,19 +6,105 @@
 // your triceps. Everything below sits *on top of* the vendored matcher and is only consulted
 // after it has already failed, so upstream stays authoritative and byte-identical.
 import { matchExercise } from '../vendor/lib/import-csv.js'
-import { EXIDX } from '../vendor/lib/exercises.js'
+import { EXIDX, EXDB } from '../vendor/lib/exercises.js'
 
 // Hevy writes "Movement (Equipment)"; the dataset writes "equipment movement" and prefers the
 // anatomical plural. These two facts explain most of the misses on their own.
-const PLURALS = [
-  [/\bbicep\b/g, 'biceps'], [/\btricep\b/g, 'triceps'],
+//
+// The rest are vocabulary disagreements between the two catalogues. Fixing them here rather
+// than naming individual exercises is what makes the fix hold: "single arm" -> "one arm"
+// resolves every single-arm variant Hevy has, including ones added after this was written.
+// The dataset is not self-consistent about biceps/triceps — "dumbbell biceps curl" but "cable
+// one arm tricep pushdown" — so neither spelling can be forced. Both are generated and tried.
+const ARM_PLURALS = [[/\bbicep\b/g, 'biceps'], [/\btricep\b/g, 'triceps']]
+
+const SYNONYMS = [
   [/\bflyes\b/g, 'fly'], [/\bflies\b/g, 'fly'], [/\bcrossovers\b/g, 'crossover'],
+
+  // Unilateral work: Hevy says "single arm", the dataset says "one arm".
+  [/\bsingle arm\b/g, 'one arm'], [/\b1 arm\b/g, 'one arm'], [/\bunilateral\b/g, 'one arm'],
+  [/\bsingle leg\b/g, 'one leg'], [/\b1 leg\b/g, 'one leg'],
+
+  // The dataset consistently misspells the ab-wheel movement as "rollerout".
+  [/\brollout\b/g, 'rollerout'], [/\broll out\b/g, 'rollerout'],
+  [/\bab wheel\b/g, 'wheel rollerout'],
+
+  // Hammer Strength plate machines; Hevy labels these "Iso-Lateral".
+  [/\biso lateral\b/g, ''], [/\bisolateral\b/g, ''], [/\bisolated\b/g, ''],
 ]
 
-const tidy = name => {
-  let s = String(name || '').toLowerCase().replace(/[-–—]/g, ' ')
-  PLURALS.forEach(([re, to]) => { s = s.replace(re, to) })
-  return s.replace(/\s+/g, ' ').trim()
+// Words that say nothing about which exercise this is, or describe a variant the dataset simply
+// does not carry. A one-arm lateral raise trains the same muscles as a two-arm one, so dropping
+// "one arm" to reach an entry that exists loses nothing that matters to a fatigue model.
+const NOISE = [
+  'chest supported', 'bar grip', 'wide grip', 'close grip', 'neutral grip', 'reverse grip',
+  'one', 'single', 'seated', 'standing', 'bodyweight', 'weighted',
+  'assisted', 'alternating', 'alternate',
+]
+
+// Equipment the dataset names as the first word of an entry. Hevy sometimes puts it in
+// parentheses and sometimes inline, so it has to be recognised in either position.
+const EQUIPMENT_WORDS = [
+  'barbell', 'dumbbell', 'cable', 'machine', 'lever', 'kettlebell', 'band',
+  'resistance band', 'smith', 'sled', 'bodyweight',
+]
+
+const squash = s => s.replace(/\s+/g, ' ').trim()
+
+const tidy = (name, pluraliseArms = true) => {
+  let s = String(name || '').toLowerCase().replace(/[-–—_/]/g, ' ')
+  SYNONYMS.forEach(([re, to]) => { s = s.replace(re, to) })
+  if (pluraliseArms) ARM_PLURALS.forEach(([re, to]) => { s = s.replace(re, to) })
+  return squash(s)
+}
+
+// Drop the qualifiers above. Tried only after faithful forms have failed: removing words makes
+// a wrong unique match more likely, not less.
+const loosen = s => squash(NOISE.reduce((out, w) => out.replace(new RegExp(`\\b${w}\\b`, 'g'), ''), s))
+
+// Pull an inline equipment word out to the front, the way the dataset writes it:
+// "cable one arm triceps pushdown" is already in that shape, "lateral raise cable" is not.
+function hoistEquipment(s) {
+  for (const eq of EQUIPMENT_WORDS) {
+    const re = new RegExp(`\\b${eq}\\b`)
+    if (!re.test(s)) continue
+    const rest = squash(s.replace(re, ''))
+    if (rest) return { eq, rest }
+  }
+  return null
+}
+
+/**
+ * Every spelling worth trying for one exercise name, strict forms before loose ones.
+ *
+ * Generating candidates and testing each beats a hand-written cascade here because the two
+ * catalogues disagree along several independent axes at once — plural, word order, equipment
+ * placement, unilateral qualifiers — and a name can be wrong on all of them simultaneously.
+ */
+function candidates(name) {
+  const strict = []
+  const loose = []
+
+  for (const form of [String(name || '').toLowerCase().trim(), tidy(name), tidy(name, false)]) {
+    if (!form) continue
+    const { base, qualifier } = parts(form)
+    strict.push(form, base)
+    if (qualifier) strict.push(`${qualifier} ${base}`)
+
+    const bare = loosen(base)
+    if (bare && bare !== base) {
+      loose.push(bare)
+      if (qualifier) loose.push(`${qualifier} ${bare}`)
+    }
+
+    for (const source of [base, bare]) {
+      const split = source && hoistEquipment(source)
+      if (!split) continue
+      loose.push(`${split.eq} ${split.rest}`, split.rest)
+    }
+  }
+
+  return [...new Set([...strict, ...loose].map(squash).filter(Boolean))]
 }
 
 // Movement and qualifier, split on Hevy's parenthetical: "Bicep Curl (Dumbbell)".
@@ -89,47 +175,68 @@ const HEVY_ALIAS = {
 
   'stair machine': '2311',              // walking on stepmill
   'stairmaster': '2311',
+
+  // Named backstops for movements the generic rules above should already reach. They cost
+  // nothing and mean a change to those rules cannot silently regress these.
+  'ab wheel': '0857',                   // wheel rollerout
+  'ab roller': '0857',
+  'ab wheel rollerout': '0857',
+  'wheel rollerout': '0857',
+  't bar row': '0606',                  // lever t bar row
+  't bar row|barbell': '0606',
+  't bar row|machine': '0606',
+  'chest press|machine': '0577',        // lever chest press
+  'incline chest press|machine': '1299',
+  'decline chest press|machine': '1300',
+  'seated incline curl|dumbbell': '0318',
+  'incline curl|dumbbell': '0318',
+  'one arm lateral raise|dumbbell': '0355',
+  'one arm lateral raise|cable': '0192',
+  'one arm triceps pushdown|cable': '1723',
+  'one arm tricep pushdown|cable': '1723',
+  'leg extension|cable': '0585',        // no cable variant exists; same movement and target
+  'one leg extension|cable': '0585',
+  'one leg extension|machine': '0585',
 }
 
 const aliasHit = (base, qualifier) =>
   HEVY_ALIAS[`${base}|${qualifier}`] || HEVY_ALIAS[base] || null
 
+/** Key an exercise name is remembered under, so "Ab Wheel" and "ab  wheel" are one entry. */
+export const overrideKey = name => tidy(name)
+
 /**
  * Resolve a Hevy exercise title to a catalogue id, or null.
  *
- * Tried in order of confidence: the vendored matcher, then the curated overlay, then two
- * generic rewrites that exploit Hevy's naming convention — drop the equipment qualifier, and
- * move it to the front the way the dataset writes it.
+ * Tried strictly in order of confidence, stopping at the first hit:
+ *   1. an override you set by hand — always wins, nothing second-guesses it
+ *   2. the vendored matcher on the name as written
+ *   3. the same matcher after vocabulary fixes ("single arm" -> "one arm")
+ *   4. the curated overlay table
+ *   5. Hevy's "Movement (Equipment)" convention, unpicked two ways
+ *   6. the same again with noise words dropped — the loosest pass, tried last
  *
  * @param {string} name Exercise title as Hevy writes it.
+ * @param {Record<string, string>} [overrides] Your own name -> exercise id decisions.
  * @returns {string|null} Dataset exercise id, or null when nothing resolves.
  */
-export function resolveName(name) {
+export function resolveName(name, overrides) {
+  const chosen = overrides?.[overrideKey(name)]
+  if (chosen?.ex && EXIDX[chosen.ex]) return chosen.ex
+  if (chosen?.muscles?.length) return null   // handled as a muscle assignment, not a catalogue id
+
+  // The name exactly as written, first and on its own — upstream's matcher is the authority
+  // and must never be second-guessed by a rewrite that happens to also match.
   const direct = matchExercise(name)
   if (direct) return direct
 
-  const { base, qualifier } = parts(name)
+  const { qualifier } = parts(name)
 
-  const alias = aliasHit(base, qualifier)
-  if (alias && EXIDX[alias]) return alias
-
-  // "Leg Curl (Machine)" -> "leg curl": reaches upstream's own unqualified alias table.
-  if (qualifier) {
-    const bare = matchExercise(base)
-    if (bare) return bare
-  }
-
-  // "Bicep Curl (Dumbbell)" -> "dumbbell biceps curl": the dataset's own word order.
-  if (qualifier) {
-    const reordered = matchExercise(`${qualifier} ${base}`)
-    if (reordered) return reordered
-  }
-
-  // Last try: the plural/singular fixes alone, with no restructuring.
-  const tidied = tidy(name)
-  if (tidied !== String(name || '').toLowerCase()) {
-    const fixed = matchExercise(tidied)
-    if (fixed) return fixed
+  for (const candidate of candidates(name)) {
+    const alias = aliasHit(candidate, qualifier) || aliasHit(candidate, '')
+    if (alias && EXIDX[alias]) return alias
+    const hit = matchExercise(candidate)
+    if (hit) return hit
   }
 
   return null
@@ -144,15 +251,16 @@ export function resolveName(name) {
  * real catalogue id, and entries that collide as a result are folded together.
  *
  * @param {object} parsed Result of parseImport for a workout file; returned unchanged for others.
+ * @param {Record<string, object>} [overrides] Your own name -> identification decisions.
  * @returns {object} The same shape, with recoverable custom exercises resolved.
  */
-export function remapParsed(parsed) {
+export function remapParsed(parsed, overrides) {
   if (!parsed || parsed.kind !== 'workouts' || !parsed.customEx?.length) return parsed
 
   const rewrite = new Map()
   const kept = []
   for (const custom of parsed.customEx) {
-    const id = resolveName(custom.n)
+    const id = resolveName(custom.n, overrides)
     if (id && EXIDX[id]) rewrite.set(custom.id, id)
     else kept.push(neutralize(custom, parsed.source))
   }
@@ -202,4 +310,98 @@ export function remapParsed(parsed) {
 function neutralize(custom, source) {
   if (source !== 'Hevy' || custom.bp !== 'upper legs') return custom
   return { ...custom, bp: '', unplaced: true }
+}
+
+/* ------------------------------------------------------- retroactive repair -- */
+
+// A muscle you name yourself is the primary; anything after it is a supporting muscle, using
+// the same 0.4 weighting the catalogue applies to its own secondaries.
+const SECONDARY_WEIGHT = 0.4
+
+const weightsFor = muscles => Object.fromEntries(
+  muscles.map((slug, i) => [slug, i === 0 ? 1 : SECONDARY_WEIGHT]),
+)
+
+/**
+ * Re-run identification over already-imported history.
+ *
+ * Two things make this necessary rather than merely convenient. Assigning an exercise by hand
+ * has to fix the training already on file, not just the next import — nobody wants to re-import
+ * to see a correction. And when the matcher itself improves, everything previously filed as
+ * unidentified should quietly resolve on next load, with no action at all.
+ *
+ * Safe to run on every load: with nothing to change it returns the identical object, so React
+ * sees no new reference and nothing recomputes.
+ *
+ * @param {object} S Application state.
+ * @returns {object} The same state, or a repaired copy.
+ */
+export function reresolveCustoms(S) {
+  const customs = S?.customEx || []
+  if (!customs.length) return S
+
+  const overrides = S.overrides || {}
+  const rewrite = new Map()
+  const kept = []
+  let changed = false
+
+  for (const custom of customs) {
+    const id = resolveName(custom.n, overrides)
+    if (id && EXIDX[id]) {
+      rewrite.set(custom.id, id)
+      changed = true
+      continue
+    }
+    // No catalogue entry, but muscles may have been assigned by hand. musclesOf reads
+    // `muscleWeights` ahead of everything else, so this overrides the body-part fallback.
+    const chosen = overrides[overrideKey(custom.n)]
+    if (chosen?.muscles?.length) {
+      const weights = weightsFor(chosen.muscles)
+      if (JSON.stringify(custom.muscleWeights || null) !== JSON.stringify(weights)) {
+        kept.push({ ...custom, muscleWeights: weights, unplaced: false })
+        changed = true
+        continue
+      }
+    } else if (custom.muscleWeights) {
+      kept.push({ ...custom, muscleWeights: undefined, unplaced: true })
+      changed = true
+      continue
+    }
+    kept.push(custom)
+  }
+
+  if (!changed) return S
+
+  const workouts = rewrite.size
+    ? S.workouts.map(w => {
+      const merged = []
+      for (const entry of w.entries || []) {
+        const id = rewrite.get(entry.id) || entry.id
+        const existing = merged.find(e => e.id === id)
+        if (existing) existing.sets.push(...entry.sets)
+        else merged.push({ ...entry, id })
+      }
+      for (const e of merged) {
+        const top = Math.max(0, ...e.sets.filter(s => s.phase !== 'warmup').map(s => s.w || 0))
+        e.topW = top || null
+      }
+      return { ...w, entries: merged }
+    })
+    : S.workouts
+
+  return { ...S, workouts, customEx: kept }
+}
+
+/** Catalogue search for the assignment picker: all query words must appear in the name. */
+export function searchCatalogue(query, limit = 12) {
+  const words = tidy(query).split(' ').filter(Boolean)
+  if (!words.length) return []
+  const out = []
+  for (const ex of EXDB) {
+    if (words.every(w => ex.n.includes(w))) {
+      out.push(ex)
+      if (out.length >= limit) break
+    }
+  }
+  return out
 }

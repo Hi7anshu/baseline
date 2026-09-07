@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
 import { parseImport, mergeImport } from '../vendor/lib/import-csv.js'
-import { remapParsed } from '../lib/match.js'
+import { remapParsed, reresolveCustoms } from '../lib/match.js'
 import { sync, fetchUser, HevyError } from '../lib/hevy.js'
 import { exportJSON, emptyState } from '../lib/store.js'
+import Unidentified from './Unidentified.jsx'
 
 /**
  * Getting training in, and back out.
@@ -28,7 +29,7 @@ export default function Data({ S, settings, commitState, commitSettings }) {
     try {
       // The vendored parser matches exercises internally, so the overlay is applied to its
       // result rather than injected into it — see remapParsed.
-      const parsed = remapParsed(parseImport(await f.text(), { unit: 'kg' }))
+      const parsed = remapParsed(parseImport(await f.text(), { unit: 'kg' }), S.overrides)
       if (parsed.error) {
         failed(parsed.error === 'empty'
           ? 'That file is empty.'
@@ -37,12 +38,26 @@ export default function Data({ S, settings, commitState, commitSettings }) {
       }
       // mergeImport mutates, so hand it a copy and commit the result — React state stays immutable.
       const next = structuredClone(S)
+
+      // Upstream's merge skips any date it already holds, which is right when you are combining
+      // exports from different apps. Hevy's export is the *whole* history every time, so here it
+      // would instead freeze the first version of a day: add sets to today's session in Hevy,
+      // re-export, and the correction would be silently discarded. Dropping the overlapping
+      // dates first makes the incoming file authoritative for every day it covers.
+      let replaced = 0
+      if (parsed.kind === 'workouts') {
+        const incoming = new Set(parsed.workouts.map(w => w.d))
+        const before = next.workouts.length
+        next.workouts = next.workouts.filter(w => !incoming.has(w.d))
+        replaced = before - next.workouts.length
+      }
+
       const result = mergeImport(next, parsed)
-      await commitState(next)
+      await commitState(reresolveCustoms(next))
       done(
         parsed.kind === 'bodyweight'
           ? `Added ${result.added} body-weight entries.`
-          : `Added ${result.added} workouts from ${parsed.source || 'CSV'}. ${result.skipped} were already here.`,
+          : `${result.added - replaced} new workouts, ${replaced} refreshed — ${next.workouts.length} total.`,
         parsed.unmatchedNames,
       )
     } catch (ex) {
@@ -126,13 +141,15 @@ export default function Data({ S, settings, commitState, commitSettings }) {
               <p className="foot">
                 A Hevy CSV carries no muscle information, so these are left out of the fatigue
                 maps rather than guessed at — a wrong reading gets acted on, a missing one does
-                not. Renaming them in Hevy to the standard name usually fixes it.
+                not. Identify them below and it is applied to this history immediately.
               </p>
               <ul className="unmatched">{msg.unmatched.map(n => <li key={n}>{n}</li>)}</ul>
             </details>
           )}
         </div>
       )}
+
+      <Unidentified S={S} commitState={commitState} />
 
       <section className="card">
         <h2 className="c-h">Your data</h2>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fatigueOf, strengthOf } from './vendor/lib/recovery.js'
 import { registerCustom } from './vendor/lib/exercises.js'
 import { loadState, saveState, loadSettings, saveSettings, emptyState } from './lib/store.js'
+import { reresolveCustoms } from './lib/match.js'
 import Recovery from './views/Recovery.jsx'
 import Volume from './views/Volume.jsx'
 import Strength from './views/Strength.jsx'
@@ -28,7 +29,12 @@ export default function App() {
 
   useEffect(() => {
     Promise.all([loadState(), loadSettings()]).then(([state, s]) => {
-      setS(state)
+      // Re-run identification on load. An exercise the matcher could not place last time may be
+      // placeable now — improving the matcher then repairs existing history by itself, with no
+      // re-import. Returns the same object when nothing changed, so this is free in the normal case.
+      const repaired = reresolveCustoms(state)
+      if (repaired !== state) saveState(repaired)
+      setS(repaired)
       setSettings(s)
       setReady(true)
     })
@@ -59,7 +65,11 @@ export default function App() {
   const customKey = useMemo(() => {
     const list = S.customEx || []
     registerCustom(list)
-    return list.map(c => c.id).join(',')
+    // The key has to cover the muscle weights, not just the ids. Assigning muscles to an
+    // unidentified exercise changes what it trains while its id stays the same, and keying on
+    // ids alone left the derived fatigue on a stale cached value — visibly 0% for a muscle the
+    // detail panel was simultaneously reporting as trained.
+    return list.map(c => `${c.id}:${Object.entries(c.muscleWeights || {}).flat().join('-')}`).join(',')
   }, [S.customEx])
 
   // The two expensive passes. Both scan the whole history, so they are memoised on the inputs

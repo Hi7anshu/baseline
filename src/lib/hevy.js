@@ -120,7 +120,7 @@ function normalizeSet(raw, cardio) {
  * @param {Map<string, object>} templates Exercise templates by id, for the fallback path.
  * @returns {{ workouts: Array<object>, customEx: Array<object> }} openGym-shaped history.
  */
-export function normalizeWorkouts(raw, templates = new Map()) {
+export function normalizeWorkouts(raw, templates = new Map(), overrides) {
   const customEx = new Map()
   const workouts = []
 
@@ -132,7 +132,7 @@ export function normalizeWorkouts(raw, templates = new Map()) {
 
     for (const ex of w.exercises || []) {
       const template = templates.get(ex.exercise_template_id)
-      let id = resolveName(ex.title || template?.title || '')
+      let id = resolveName(ex.title || template?.title || '', overrides)
 
       if (!id) {
         // No catalogue match. Invent one from Hevy's own muscle data, or from the title alone
@@ -289,7 +289,7 @@ export async function sync(S, settings, { onProgress } = {}) {
     deleted = events.deleted
   }
 
-  const { workouts, customEx } = normalizeWorkouts(rawWorkouts, templates)
+  const { workouts, customEx } = normalizeWorkouts(rawWorkouts, templates, S.overrides)
 
   // Merge by Hevy id: an edited workout replaces its old copy rather than sitting beside it.
   const byId = new Map(S.workouts.map(w => [w.hevyId || w.id, w]))

@@ -226,3 +226,33 @@ body {
 .hist-bar { width: 100%; background: var(--accent); border-radius: 5px 5px 0 0; min-height: 3px; transition: height .3s ease; }
 .hist-n { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
 .hist-l { font-size: 11px; color: var(--faint); }
+
+/* -------------------------------------------------------- unidentified -- */
+
+.unid { border-top: 1px solid var(--line); padding: 12px 0; }
+.unid:last-child { padding-bottom: 0; }
+.unid.done { opacity: .72; }
+.unid-head { display: flex; align-items: center; gap: 12px; }
+.unid-name { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.unid-name strong { font-size: 14px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; }
+.unid-sub { font-size: 12px; color: var(--ready); }
+.unid-body { margin-top: 12px; }
+
+.btn.small { width: auto; padding: 7px 13px; font-size: 13px; flex-shrink: 0; }
+
+.picks { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 1px; max-height: 300px; overflow-y: auto; }
+.pick {
+  width: 100%; text-align: left; appearance: none; border: 0; background: none;
+  color: var(--ink); font: inherit; cursor: pointer;
+  padding: 9px 10px; margin: 0 -10px; border-radius: 8px; display: grid; gap: 2px;
+}
+.pick:hover, .pick:active { background: #0f141b; }
+.pick-n { font-size: 13.5px; }
+.pick-m { font-size: 11.5px; color: var(--faint); }
+
+.chips.pickable .chip {
+  appearance: none; border: 1px solid var(--line); font: inherit; cursor: pointer;
+}
+.chips.pickable .chip.primary { background: rgba(47, 129, 247, .18); border-color: var(--accent); color: #cfe3ff; }
+.chips.pickable .chip.secondary { background: rgba(47, 129, 247, .08); border-color: rgba(47, 129, 247, .4); color: var(--ink); }
+.chips.pickable + .btn { margin-top: 12px; }

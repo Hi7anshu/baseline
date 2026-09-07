@@ -41,7 +41,9 @@ everything is back. There is also an **Export backup** button for a JSON copy.
 ## Getting your training in
 
 **CSV (any Hevy account).** In Hevy: Settings → Export & Import Data → Export Workout Data.
-Save the file, open the app's **Data** tab, pick it. Re-importing later only adds what is new.
+Save the file, open the app's **Data** tab, pick it. Hevy exports your whole history every
+time, so a re-import refreshes every day it covers — editing a past session in Hevy and
+re-exporting corrects it here, rather than leaving the first version frozen.
 
 **API sync (needs Hevy Pro).** Get a key at `hevy.com/settings?developer`, paste it into the
 Data tab. The first sync pulls everything; later syncs ask `/v1/workouts/events` for only what
@@ -102,12 +104,19 @@ a straight file copy. Everything project-specific sits outside it and layers on 
 
 - **`match.js`** — openGym's matcher resolves ~76% of a typical Hevy vocabulary; the rest fall
   back to body-part weights, which is actively wrong (a "Bicep Curl (Dumbbell)" filed under
-  "upper arms" fatigues your triceps). The overlay adds Hevy-specific aliases and two generic
-  rewrites for its `Movement (Equipment)` convention, taking a 62-name sample from 47/62 to
-  61/62. It runs only after upstream has already failed.
-- Exercises that still cannot be identified are left **unattributed rather than guessed**, and
-  listed back to you after every import. A wrong fatigue reading gets acted on; a missing one
-  does not.
+  "upper arms" fatigues your triceps). The overlay runs only after upstream has failed, and
+  fixes the *classes* of disagreement between the two catalogues rather than naming exercises:
+  unilateral wording (Hevy "single arm" vs dataset "one arm"), inconsistent bicep/triceps
+  plurals, equipment placed inline or in parentheses, and grip/stance qualifiers the dataset
+  has no variant for. A 62-name sample goes from 47/62 to 61/62.
+- **Exercises the catalogue does not contain at all** are the permanent gap — openGym's list is
+  fixed and Hevy keeps adding movements. The **Unidentified exercises** panel in the Data tab
+  lets you point one at a catalogue exercise or name its muscles directly. The decision is
+  remembered by name, applied to every future import, and **back-applied to history already on
+  file**. Improving the matcher also re-runs on load, so previously unidentified exercises
+  resolve themselves with no re-import.
+- Until identified, such an exercise is left **unattributed rather than guessed**, and listed
+  back to you. A wrong fatigue reading gets acted on; a missing one does not.
 - **Build-time catalogue trim** (`vite.config.js`) drops the exercise instructions and media
   filenames nothing renders, cutting the bundle from 1.1 MB to 417 KB (100 KB gzipped) without
   touching the vendored source.

@@ -12,6 +12,7 @@ export const emptyState = () => ({
   customEx: [],      // exercises Hevy logged that the catalogue could not match
   bodyweight: [],    // [{ d, w }]
   exWeights: {},     // seeded by mergeImport; unused here but keeps the contract intact
+  overrides: {},     // exercise name -> your own identification, applied to every import
   unit: 'kg',
 })
 
