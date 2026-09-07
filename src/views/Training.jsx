@@ -4,6 +4,7 @@ import MuscleList from '../components/MuscleList.jsx'
 import { loadOfWorkouts } from '../vendor/lib/muscles.js'
 import { groupValues, SUM } from '../lib/groups.js'
 import { deltVolume, HEADS } from '../lib/delts.js'
+import Strength from './Strength.jsx'
 import {
   hasEffort, displayScale, scaleName, toScale, isHardSet,
   effortSummary, effortHistogram, effortWeeks, MIN_RATED,
@@ -11,6 +12,7 @@ import {
 
 const LENSES = [
   { id: 'volume', label: 'Volume' },
+  { id: 'strength', label: 'Strength' },
   { id: 'effort', label: 'Effort' },
 ]
 
@@ -25,24 +27,25 @@ const WINDOWS = [
 export default function Training({ S }) {
   const [lens, setLens] = useState('volume')
 
-  // Effort is optional in Hevy and off by default. A permanently empty tab is worse than no
-  // tab, so the switcher only appears once there is rated work to switch to — and reappears by
-  // itself if RPE is ever turned on.
+  // Effort is optional in Hevy and off by default. A permanently empty lens is worse than no
+  // lens, so it only appears once there is rated work to switch to — and reappears by itself if
+  // RPE is ever turned on. Volume and Strength always apply.
   const rated = useMemo(() => hasEffort(S), [S])
-  const showing = rated ? lens : 'volume'
+  const lenses = rated ? LENSES : LENSES.filter(l => l.id !== 'effort')
+  const showing = lenses.some(l => l.id === lens) ? lens : 'volume'
 
   return (
     <>
-      {rated && (
-        <div className="seg">
-          {LENSES.map(l => (
-            <button key={l.id} className={'seg-b' + (showing === l.id ? ' on' : '')} onClick={() => setLens(l.id)}>
-              {l.label}
-            </button>
-          ))}
-        </div>
-      )}
-      {showing === 'volume' ? <Volume S={S} /> : <Effort S={S} />}
+      <div className="seg">
+        {lenses.map(l => (
+          <button key={l.id} className={'seg-b' + (showing === l.id ? ' on' : '')} onClick={() => setLens(l.id)}>
+            {l.label}
+          </button>
+        ))}
+      </div>
+      {showing === 'volume' && <Volume S={S} />}
+      {showing === 'strength' && <Strength S={S} />}
+      {showing === 'effort' && <Effort S={S} />}
     </>
   )
 }

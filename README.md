@@ -46,8 +46,9 @@ what has gone stale from not being trained. They are opposite instructions, so t
 screen. Green is good on both.
 
 **Training** — *Volume* (effective sets per muscle, on a neutral blue scale because volume has
-no good or bad end). Shoulders breaks down into front / side / rear delts. *Effort* (RPE spread
-and weekly trend) appears only once rated sets exist, since Hevy has RPE off by default.
+no good or bad end; shoulders breaks down into front / side / rear delts), *Strength* (estimated
+1RM per lift over time, with PRs and stalls), and *Effort* (RPE spread and weekly trend), which
+appears only once rated sets exist since Hevy has RPE off by default.
 
 **Body** — weight, neck, waist, hips, chest, arm, thigh, calf. Derives waist-to-height, body
 fat, lean mass, BMI and FFMI, and charts each over time. Profile lists what it unlocks and what
@@ -116,12 +117,13 @@ src/
     eta.js         recovery-time arithmetic
     groups.js      18 muscles -> 6 groups, with per-view roll-up
     delts.js       front/side/rear split, inferred from exercise names
+    strength.js    e1RM progress per lift, PRs, movers and stalls
     body.js        waist-to-height, Navy body fat, lean mass, FFMI
     nutrition.js   macro parsing, TDEE estimate, weekly summaries
     store.js       IndexedDB persistence
   components/
     MuscleList.jsx grouped, expandable muscle list
-  views/           Recovery, Training, Body, Fuel, Data, Unidentified
+  views/           Recovery, Training, Strength, Body, Fuel, Data, Unidentified
 ```
 
 `src/vendor/` is an unmodified copy of openGym's pure logic, so re-vendoring a newer upstream is
@@ -158,6 +160,12 @@ a straight file copy. Everything project-specific sits outside it and layers on 
   floor because they were never worked directly would otherwise pin every group at 50% forever.
 - **Effort** — aggregated in RIR internally and converted for display, so a history mixing RPE
   and RIR still draws one series. Averages are hidden below 5 rated sets.
+- **Estimated 1RM** — Epley, from the best working set of each session, and **only up to 12
+  reps**. Above that the formulas disagree by double digits and the number stops describing
+  maximal strength, so openGym refuses to produce one — which means high-rep isolation work,
+  bodyweight sets and timed holds have no curve here at all. That absence is correct, not a gap.
+  The set behind each estimate is shown, because 142 kg off 100×10 is a weaker claim than the
+  same number off a heavy triple.
 - **Waist-to-height** — needs no equation and no assumptions. Under 0.5 is the usual guideline.
   This is the body number to trust.
 - **Body fat** — US Navy circumference method. Roughly ±3–4 points on the absolute value but
