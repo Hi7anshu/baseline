@@ -79,6 +79,9 @@ CSV with a date and a weight column.
 
 ---
 
+Picking this up after a break? Start with **[HANDOFF.md](HANDOFF.md)** — current state, open
+items, and the decisions that are deliberate rather than accidental.
+
 ## Running it
 
 ```bash
