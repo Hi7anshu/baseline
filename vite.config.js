@@ -30,8 +30,13 @@ function slimCatalogue() {
   }
 }
 
+// GitHub Pages serves a project site from /<repo>/, so the build needs to know its subpath.
+// Kept as an env var rather than hardcoded: `npm run dev` and any root-domain host still work
+// unchanged, and moving to a custom domain later is one variable, not a code change.
+const base = process.env.VITE_BASE || '/'
+
 export default defineConfig({
-  base: '/',
+  base,
   plugins: [
     slimCatalogue(),
     react(),
@@ -46,7 +51,9 @@ export default defineConfig({
         background_color: '#0d1117',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
+        id: base,
+        scope: base,
+        start_url: base,
         icons: [
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
