@@ -1,5 +1,7 @@
 # Fatigue — Hevy Analytics
 
+**Live: https://hi7anshu.github.io/hevy-fatigue/**
+
 Per-muscle fatigue, recovery and detraining analytics for a [Hevy](https://hevy.com) training
 log, as an installable iPhone web app.
 
@@ -56,17 +58,21 @@ npm run dev      # http://localhost:5173
 npm run build    # -> dist/
 ```
 
-## Deploying to Cloudflare Pages
+## Deploying
+
+Pushing to `main` builds and publishes to GitHub Pages automatically
+(`.github/workflows/deploy.yml`). Nothing to run by hand.
+
+`VITE_BASE` tells the build its subpath — the workflow sets it to `/<repo>/`, which is where a
+GitHub Pages project site is served from. It defaults to `/`, so a root-domain host or a custom
+domain needs no change beyond pointing DNS and clearing the variable.
+
+Any static host works the same way:
 
 ```bash
-npm install -g wrangler
-npm run build
-wrangler pages deploy dist --project-name fatigue
+npm run build            # -> dist/, served from /
+npx wrangler pages deploy dist --project-name fatigue
 ```
-
-Or connect the repo in the Cloudflare dashboard with build command `npm run build` and output
-directory `dist`. Any static host works — Vercel, Netlify, GitHub Pages — nothing here is
-Cloudflare-specific.
 
 ### Installing on the iPhone
 
