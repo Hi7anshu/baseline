@@ -570,3 +570,46 @@ select.input { appearance: none; }
 .sub-extra { padding: 2px 0 10px 16px; }
 .delt-split .sub-row { padding: 6px 8px; }
 .delt-split .foot { margin-top: 8px; }
+
+/* --------------------------------------------------------- consistency -- */
+
+/* Sixteen columns on a phone means each day is a few pixels; the grid is read as a shape, not
+   as individual squares, so the labels sit outside it and the squares stay square. */
+/* Fixed square cells rather than fractional columns: a day is a day, and stretching them to
+   fill the card turned the grid into stripes. Sixteen 15px columns fit a 375px screen with room
+   to spare; anything narrower scrolls rather than distorting. */
+.heat { display: flex; gap: 7px; align-items: flex-start; overflow-x: auto; --cell: 15px; }
+.heat-days {
+  display: grid; grid-auto-rows: var(--cell); gap: 3px;
+  font-size: 9px; color: var(--faint); line-height: 1; flex: 0 0 auto;
+}
+.heat-days span { display: flex; align-items: center; }
+.heat-grid { display: grid; grid-auto-flow: column; gap: 3px; }
+.heat-col { display: grid; grid-auto-rows: var(--cell); gap: 3px; }
+.heat-c {
+  display: block; width: var(--cell); height: var(--cell); border-radius: 3px; background: var(--l0);
+}
+.heat-c.l1 { background: var(--h1, var(--l1)); }
+.heat-c.l2 { background: var(--h2, var(--l2)); }
+.heat-c.l3 { background: var(--h3, var(--l3)); }
+.heat-c.l4 { background: var(--h4, var(--l4)); }
+.heat { --h1: #1f3f66; --h2: #2f6fbf; --h3: #4a9eff; --h4: #9ed0ff; }
+:root[data-theme="light"] .heat { --h1: #bcd6f5; --h2: #7fb0ec; --h3: #3d84dd; --h4: #0a5fc0; }
+.heat-c.future { opacity: .35; }
+
+/* ---------------------------------------------------------- train today -- */
+
+.picks-today { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.today-row {
+  appearance: none; width: 100%; font: inherit; cursor: pointer; text-align: left;
+  display: grid; grid-template-columns: 1fr auto auto; align-items: baseline; gap: 12px;
+  padding: 11px 12px; border-radius: 10px; background: var(--sunk);
+  border: 0; border-left: 3px solid var(--line); color: var(--ink);
+}
+.today-row.ready { border-left-color: var(--ready); }
+.today-row.recovering { border-left-color: var(--recovering); }
+.today-row.fatigued { border-left-color: var(--fatigued); }
+.t-n { font-size: 14.5px; font-weight: 600; }
+.t-v, .t-r { font-size: 13px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.t-v small, .t-r small { font-size: 10.5px; color: var(--faint); margin-left: 2px; }
+.t-r.fading { color: var(--recovering); }

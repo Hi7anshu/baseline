@@ -94,7 +94,7 @@ export default function App() {
   if (!ready) return <div className="boot">Loading…</div>
 
   const blocked = !S.workouts.length && NEEDS_TRAINING.has(tab)
-  const shared = { S, settings, now, opts, fatigue, strength, commitState, commitSettings }
+  const shared = { S, settings, now, opts, fatigue, strength, commitState, commitSettings, goTo: setTab }
 
   return (
     <div className="app">

@@ -9,6 +9,7 @@ import { recoveryRows, fmtEta, STATE_LABEL, FATIGUE_THRESHOLDS } from '../lib/et
 import { fatigueStateOf } from '../vendor/lib/recovery-view.js'
 import { fuelRead, conditionsByGroup, consequence } from '../lib/fuel.js'
 import { deltVolume, HEADS } from '../lib/delts.js'
+import { dataAge, agoLabel, STALE_DAYS } from '../lib/freshness.js'
 import { targets, PROTEIN_LOW } from '../lib/nutrition.js'
 import FuelChart from '../components/FuelChart.jsx'
 
@@ -29,7 +30,7 @@ const LENSES = [
  * It is deliberately a separate lens rather than a factor inside the other two, because it does
  * not move either number — see `lib/fuel.js` for why that refusal is the honest position.
  */
-export default function Recovery({ S, now, fatigue, strength }) {
+export default function Recovery({ S, now, fatigue, strength, goTo }) {
   const [lens, setLens] = useState('fatigue')
   const [selected, setSelected] = useState(null)
 
@@ -42,7 +43,13 @@ export default function Recovery({ S, now, fatigue, strength }) {
           </button>
         ))}
       </div>
-      {lens === 'fatigue' && <Fatigue S={S} now={now} fatigue={fatigue} selected={selected} setSelected={setSelected} onFuel={() => setLens('fuel')} />}
+      {lens === 'fatigue' && (
+        <Fatigue
+          S={S} now={now} fatigue={fatigue} strength={strength}
+          selected={selected} setSelected={setSelected}
+          onFuel={() => setLens('fuel')} goTo={goTo}
+        />
+      )}
       {lens === 'retention' && <Retention strength={strength} selected={selected} setSelected={setSelected} />}
       {lens === 'fuel' && <FuelLens S={S} />}
     </>
@@ -51,7 +58,7 @@ export default function Recovery({ S, now, fatigue, strength }) {
 
 /* ---------------------------------------------------------------- fatigue -- */
 
-function Fatigue({ S, now, fatigue, selected, setSelected, onFuel }) {
+function Fatigue({ S, now, fatigue, strength, selected, setSelected, onFuel, goTo }) {
   const rows = useMemo(() => recoveryRows(fatigue), [fatigue])
   const byState = useMemo(() => {
     const counts = { ready: 0, recovering: 0, fatigued: 0 }
@@ -89,9 +96,55 @@ function Fatigue({ S, now, fatigue, selected, setSelected, onFuel }) {
   const fuel = useMemo(() => conditionsByGroup(S, deltDays), [S])
   const note = useMemo(() => consequence(fuel.summary), [fuel])
 
+  const age = useMemo(() => dataAge(S, now), [S.workouts, now])
+
+  // What is both recovered and most in need of the work — the question this screen is opened to
+  // answer, previously left to be assembled out of two lists.
+  //
+  // A group takes its most fatigued muscle, so whole groups clear the "ready" band far less
+  // often than individual muscles do. Showing only fully-ready groups therefore produced an
+  // empty card on most days, which is useless on the gym floor: the real question is not "what
+  // is perfect" but "what is the best thing available now". So the list is always the three
+  // freshest, each labelled with the band it is actually in.
+  const today = useMemo(() => {
+    const fat = groupValues(fatigue, MAX)
+    const ret = groupValues(strength, weakestTrained)
+    const rows = fat.map(g => ({
+      ...g,
+      state: fatigueStateOf(g.value),
+      retention: ret.find(r => r.id === g.id)?.value ?? 1,
+    }))
+
+    // Ready first and, among those, most detrained first — equally recovered muscles are
+    // separated by which has been waiting longest. Everything else follows on freshness.
+    const ready = rows.filter(r => r.state === 'ready').sort((a, b) => a.retention - b.retention)
+    const rest = rows.filter(r => r.state !== 'ready').sort((a, b) => a.value - b.value)
+
+    const picks = [...ready, ...rest].slice(0, 3)
+    const shown = new Set(picks.map(p => p.id))
+    return {
+      picks,
+      anyReady: ready.length > 0,
+      // Never name a group as one to leave while it is also being offered above — on a week
+      // where nothing is fresh, the three least-cooked groups are still in the fatigued band.
+      held: rows.filter(r => r.state === 'fatigued' && !shown.has(r.id)).sort((a, b) => b.value - a.value),
+    }
+  }, [fatigue, strength])
+
   return (
     <>
-      {note && note.state !== 'ok' && (
+      {age.stale && (
+        <button className="banner low" onClick={() => goTo?.('data')}>
+          <span className="bn-h">Nothing imported for {age.days} days</span>
+          <span className="bn-b">
+            Newest workout {age.newest}. Fatigue decays with the clock whether or not anything is
+            imported, so after {STALE_DAYS} days everything drifts toward ready on its own.
+            Import ›
+          </span>
+        </button>
+      )}
+
+      {note && note.state !== 'ok' && !age.stale && (
         <button className={'banner ' + note.state} onClick={onFuel}>
           <span className="bn-h">{note.head}</span>
           <span className="bn-b">
@@ -102,6 +155,32 @@ function Fatigue({ S, now, fatigue, selected, setSelected, onFuel }) {
           </span>
         </button>
       )}
+
+      <section className="card">
+        <h2 className="c-h">Train today</h2>
+        <ul className="picks-today">
+          {today.picks.map(g => (
+            <li key={g.id}>
+              <button className={'today-row ' + g.state} onClick={() => setSelected(g.muscles[0].slug)}>
+                <span className="t-n">{g.name}</span>
+                <span className="t-v">{Math.round(g.value * 100)}<small>% fatigued</small></span>
+                <span className={'t-r' + (g.retention < 0.9 ? ' fading' : '')}>
+                  {Math.round(g.retention * 100)}<small>% held</small>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <p className="foot">
+          {today.anyReady
+            ? 'Recovered groups first, most detrained among them at the top — where two are equally ready, the one that has been waiting longest is the one worth the session.'
+            : 'Nothing is in the ready band right now, so these are simply the freshest. A group takes its most fatigued muscle, which is what limits the session.'}
+          {today.held.length > 0 && (
+            <> Leave {today.held.slice(0, 3).map(g => g.name.toLowerCase()).join(', ')}
+            {today.held.length > 3 ? ` and ${today.held.length - 3} more` : ''}: still fatigued.</>
+          )}
+        </p>
+      </section>
 
       <section className="card">
         <div className="verdict">

@@ -5,6 +5,7 @@ import { loadOfWorkouts } from '../vendor/lib/muscles.js'
 import { groupValues, SUM } from '../lib/groups.js'
 import { deltVolume, HEADS } from '../lib/delts.js'
 import Strength from './Strength.jsx'
+import Sessions from './Sessions.jsx'
 import {
   hasEffort, displayScale, scaleName, toScale, isHardSet,
   effortSummary, effortHistogram, effortWeeks, MIN_RATED,
@@ -13,6 +14,7 @@ import {
 const LENSES = [
   { id: 'volume', label: 'Volume' },
   { id: 'strength', label: 'Strength' },
+  { id: 'sessions', label: 'Sessions' },
   { id: 'effort', label: 'Effort' },
 ]
 
@@ -45,6 +47,7 @@ export default function Training({ S }) {
       </div>
       {showing === 'volume' && <Volume S={S} />}
       {showing === 'strength' && <Strength S={S} />}
+      {showing === 'sessions' && <Sessions S={S} />}
       {showing === 'effort' && <Effort S={S} />}
     </>
   )

@@ -40,6 +40,10 @@ Two facts make the no-server design possible. Verify both still hold before assu
 | Fuel (macros, targets, Claude prompt) | Done |
 | Data (CSV import, exercise identification, export **and restore**) | Done |
 | Light / dark / system theme | Done — `lib/theme.js`, chosen under Data → Appearance |
+| Training → Sessions (heatmap, weekly volume, the log itself) | Done |
+| Recovery → Train today | Done |
+| Linked export file + one-button refresh | Done **where the browser allows it** — see below |
+| Stale-data warning | Done — `lib/freshness.js`, banner on Recovery, note on Data |
 | Hevy API sync | **Written, never run against a real key** — he has no Pro, see below |
 | Body-weight import | Done — tested against his real file 2026-09-07 |
 
@@ -52,6 +56,26 @@ He confirmed on 2026-09-07 that he has no Pro key and cannot test the API path. 
 - `/v1/body_measurements` is likewise unavailable. Body weight came in through the file import,
   which means **the body-weight import path is now tested against a real file** and works.
 - Stop asking him to check. It is settled until he says otherwise.
+
+## The linked file, and why it is not on his phone
+
+He asked for the thing that obviously should exist: Hevy overwrites the same export file every
+time, so Baseline ought to remember that path and re-read it on a button press.
+
+That is exactly what the File System Access API does, and `lib/linked-file.js` implements it —
+`showOpenFilePicker` once, the handle persisted in IndexedDB, `getFile()` on every Refresh.
+**It does not exist on Chrome for Android or Safari on iOS.** Verified on caniuse before
+building: desktop Chrome, Edge and Opera only. So the card is feature-detected with `canLink()`
+and simply does not render where the API is missing; the file-input path stays the primary one
+and must keep working.
+
+If the one-tap phone flow is wanted, the route is **Web Share Target** — a manifest
+`share_target` with `method: POST` and `enctype: multipart/form-data`, received by the service
+worker, which means moving vite-plugin-pwa from `generateSW` to `injectManifest` and owning the
+SW (precache, navigation fallback, and a fetch handler that stashes the shared file). Then the
+flow is Hevy → Share → Baseline. It was scoped and deliberately not done in this pass, because
+swapping the service worker on an installed PWA is the one change here that can break his
+working install. Do not start it without saying that out loud first.
 
 ## Working on it
 
@@ -165,6 +189,13 @@ starting on it did nothing at all).
 to delete on a tap anywhere in the row; a scroll that starts on a row fires it. Both now carry
 an explicit `×`. Do not reintroduce the pattern.
 
+**Stale data is the failure mode of the CSV workflow.** Fatigue decays with wall-clock time, so
+when imports stop, every muscle drifts toward "ready" and the app quietly turns into an argument
+for training everything — the most misleading state it can reach, and the one that looks like
+good news. `lib/freshness.js` reports the age of the newest workout; past `STALE_DAYS` the
+Recovery banner and the Data note both say so. A gap in the data and a week off are
+indistinguishable from inside, so neither claims to know which it was.
+
 **Theming is token-only.** `styles.css` defines every surface, ink and ramp as a variable on
 `:root`, and `:root[data-theme="light"]` redefines them. A hardcoded hex anywhere else silently
 breaks one theme — the palettes are matched on meaning (`--l0` is always "least of it"), not on
@@ -188,14 +219,23 @@ cannot be until he has Pro. Treat any change near it as unverified.
 directly. No code change needed.
 
 **Ideas not started**, roughly in value order:
-1. **Consistency heatmap** — `Heatmap.jsx` and `streakWeeks()` exist in openGym, not yet vendored.
-   Cheap, and "did I actually turn up" pairs naturally with the rest.
+1. **Web Share Target** for the Android import flow — see the section above, including why it was
+   held back.
 2. **`progression.js`** — openGym's next-weight suggestions. Lower value, since he programmes in
    Hevy and would act there, not here.
+
+The consistency heatmap was written here rather than vendored from openGym: theirs marks
+attendance, this one shades by working sets, because a four-set session and a fifteen-set one are
+not the same day and a grid that says they are flatters a bad month.
 
 Also worth knowing: the Fuel lens's group table reads mostly "unlogged" until intake is logged
 on the days he trains. That is correct and deliberate — an unlogged day is never counted as fed —
 but it does mean the panel looks thin until the habit sticks.
+
+Done since the first handoff, second pass: the Sessions lens (16-week heatmap, weekly volume
+against its own average with the current partial week excluded, and the session log with sets
+collapsed — "60 kg × 10 ×3"), the Train today card, linked-file import, and the stale-data
+warning.
 
 Done since the first handoff: per-measurement trend charts (all nine metrics, and switching to an
 empty one no longer unmounts the card), a nutrition-over-time chart as the Recovery → Fuel lens,

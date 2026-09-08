@@ -26,7 +26,8 @@ export const defaultSettings = () => ({
   lastSync: null,    // ISO timestamp of the last successful API sync
   syncCursor: null,  // page cursor for /v1/workouts/events
   bodyweightKg: null,// fallback for bodyweight-exercise fatigue when Hevy has no measurement
-  theme: 'system'    // 'system' | 'light' | 'dark'
+  theme: 'system',   // 'system' | 'light' | 'dark'
+  lastImport: null   // ISO timestamp of the last successful file import
 })
 
 export async function loadState() {

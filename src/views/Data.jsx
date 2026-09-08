@@ -1,9 +1,11 @@
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { parseImport, parseBodyweight, mergeImport } from '../vendor/lib/import-csv.js'
 import { remapParsed, reresolveCustoms } from '../lib/match.js'
 import { sync, fetchUser, HevyError } from '../lib/hevy.js'
 import { exportJSON, parseBackup, emptyState } from '../lib/store.js'
 import { THEMES, resolveTheme } from '../lib/theme.js'
+import { canLink, linkFile, linkedFile, readLinked, forgetLink } from '../lib/linked-file.js'
+import { dataAge, agoLabel, STALE_DAYS } from '../lib/freshness.js'
 import Unidentified from './Unidentified.jsx'
 
 /**
@@ -21,6 +23,13 @@ export default function Data({ S, settings, commitState, commitSettings }) {
   const file = useRef(null)
   const weightFile = useRef(null)
   const backupFile = useRef(null)
+  const [linked, setLinked] = useState(null)
+
+  const age = useMemo(() => dataAge(S), [S.workouts])
+
+  // Only asked for where the API exists; on Android and iOS this stays null and the card that
+  // uses it never renders.
+  useEffect(() => { if (canLink()) linkedFile().then(h => setLinked(h || null)) }, [])
 
   const done = (text, unmatched) => { setMsg({ text, unmatched }); setErr(null); setBusy(null) }
   const failed = text => { setErr(text); setMsg(null); setBusy(null) }
@@ -28,16 +37,65 @@ export default function Data({ S, settings, commitState, commitSettings }) {
   async function onFile(e) {
     const f = e.target.files?.[0]
     if (!f) return
-    setBusy('Reading file…'); setErr(null); setMsg(null)
+    setBusy('Reading file…')
+    await importText(await f.text())
+    if (file.current) file.current.value = ''
+  }
+
+  // Re-read the linked export and import whatever is in it now. The permission prompt, if one
+  // is needed, has to happen inside this click — hence no awaits before readLinked.
+  async function onRefresh() {
+    if (!linked) return
+    setBusy('Reading the linked file…'); setErr(null); setMsg(null)
+    try {
+      const { text, name, lastModified } = await readLinked(linked)
+      const saved = await importText(text, `${name}, saved ${agoLabel(daysSince(lastModified))}`)
+      if (saved) await commitSettings({ ...settings, lastImport: new Date().toISOString() })
+    } catch (ex) {
+      failed(ex.message || 'Could not read the linked file.')
+    }
+  }
+
+  async function onLink() {
+    setErr(null); setMsg(null)
+    try {
+      const handle = await linkFile()
+      setLinked(handle)
+      setBusy('Reading the linked file…')
+      const { text, name, lastModified } = await readLinked(handle)
+      await importText(text, `${name}, saved ${agoLabel(daysSince(lastModified))}`)
+    } catch (ex) {
+      // An abandoned picker is a decision, not a failure.
+      if (ex?.name === 'AbortError') { setBusy(null); return }
+      failed(ex.message || 'Could not link that file.')
+    }
+  }
+
+  async function onUnlink() {
+    await forgetLink()
+    setLinked(null)
+    done('File unlinked. The import above still works.')
+  }
+
+  /**
+   * Parse and merge one export, whatever handed it over.
+   *
+   * @param {string} text Raw file contents.
+   * @param {string} [source] Named in the result line, so a refresh can say which file and when
+   *   it was written — the one thing that distinguishes "nothing new" from "wrong file".
+   * @returns {boolean} Whether anything was imported.
+   */
+  async function importText(text, source) {
+    setErr(null); setMsg(null)
     try {
       // The vendored parser matches exercises internally, so the overlay is applied to its
       // result rather than injected into it — see remapParsed.
-      const parsed = remapParsed(parseImport(await f.text(), { unit: 'kg' }), S.overrides)
+      const parsed = remapParsed(parseImport(text, { unit: 'kg' }), S.overrides)
       if (parsed.error) {
         failed(parsed.error === 'empty'
           ? 'That file is empty.'
           : 'That file was not recognised as a Hevy, Strong or FitNotes export.')
-        return
+        return false
       }
       // mergeImport mutates, so hand it a copy and commit the result — React state stays immutable.
       const next = structuredClone(S)
@@ -57,16 +115,18 @@ export default function Data({ S, settings, commitState, commitSettings }) {
 
       const result = mergeImport(next, parsed)
       await commitState(reresolveCustoms(next))
+      const added = result.added - replaced
       done(
         parsed.kind === 'bodyweight'
           ? `Added ${result.added} body-weight entries.`
-          : `${result.added - replaced} new workouts, ${replaced} refreshed — ${next.workouts.length} total.`,
+          : `${added} new workout${added === 1 ? '' : 's'}, ${replaced} refreshed — `
+            + `${next.workouts.length} total.${source ? ` From ${source}.` : ''}`,
         parsed.unmatchedNames,
       )
+      return true
     } catch (ex) {
       failed(ex.message || 'Could not read that file.')
-    } finally {
-      if (file.current) file.current.value = ''
+      return false
     }
   }
 
@@ -155,6 +215,46 @@ export default function Data({ S, settings, commitState, commitSettings }) {
 
   return (
     <>
+      {age.stale && !age.empty && (
+        <div className="note busy">
+          Newest workout is from {age.newest} — {agoLabel(age.days)}. Fatigue decays with the
+          clock whether or not anything is imported, so after {STALE_DAYS} days the maps drift
+          toward "everything ready" simply because nothing new has arrived. Re-export and import
+          before reading them.
+        </div>
+      )}
+
+      {canLink() && (
+        <section className="card">
+          <h2 className="c-h">Linked export</h2>
+          {linked ? (
+            <>
+              <p className="p">
+                Linked to <strong>{linked.name}</strong>. Hevy overwrites the same file every
+                time you export, so this re-reads whatever is at that path now — no picker.
+              </p>
+              <div className="btn-row">
+                <button className="btn primary" disabled={!!busy} onClick={onRefresh}>Refresh now</button>
+                <button className="btn" disabled={!!busy} onClick={onUnlink}>Unlink</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="p">
+                Pick your Hevy export once and this remembers the file. Every export after that
+                is one button — the file is re-read in place, so it always imports the newest
+                version.
+              </p>
+              <button className="btn primary" disabled={!!busy} onClick={onLink}>Link export file</button>
+            </>
+          )}
+          <p className="foot">
+            Only the reference to the file is stored, and only on this device. Nothing is
+            uploaded, and the app can read it only when you press Refresh.
+          </p>
+        </section>
+      )}
+
       <section className="card">
         <h2 className="c-h">Import from Hevy</h2>
         <p className="p">
@@ -242,6 +342,11 @@ export default function Data({ S, settings, commitState, commitSettings }) {
           <div className="v-col"><span className="v-n">{S.measurements?.length || 0}</span><span className="v-l">measurements</span></div>
           <div className="v-col"><span className="v-n">{S.nutrition?.length || 0}</span><span className="v-l">days logged</span></div>
         </div>
+        <p className="foot" style={{ margin: '0 0 14px' }}>
+          {age.empty
+            ? 'Nothing imported yet.'
+            : `Newest workout ${age.newest} — ${agoLabel(age.days)}.`}
+        </p>
         <p className="p">
           Everything lives in this browser and on Hevy's servers. Nothing is uploaded anywhere else
           and no server holds a copy, so there is nothing to keep running.
@@ -295,3 +400,5 @@ export default function Data({ S, settings, commitState, commitSettings }) {
     </>
   )
 }
+
+const daysSince = ms => Math.max(0, Math.floor((Date.now() - ms) / 86400000))
