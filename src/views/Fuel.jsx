@@ -4,6 +4,7 @@ import {
   proteinVerdict, PROTEIN_LOW, CLAUDE_PROMPT,
 } from '../lib/nutrition.js'
 import { hardSets } from '../lib/fuel.js'
+import FuelLoad from './FuelLoad.jsx'
 
 const todayISO = () => {
   const d = new Date()
@@ -30,6 +31,20 @@ const MACROS = [
  * worse than none.
  */
 export default function Fuel({ S, commitState }) {
+  const [tab, setTab] = useState('log')
+
+  return (
+    <>
+      <div className="seg">
+        <button className={'seg-b' + (tab === 'log' ? ' on' : '')} onClick={() => setTab('log')}>Log</button>
+        <button className={'seg-b' + (tab === 'load' ? ' on' : '')} onClick={() => setTab('load')}>Against training</button>
+      </div>
+      {tab === 'log' ? <Log S={S} commitState={commitState} /> : <FuelLoad S={S} />}
+    </>
+  )
+}
+
+function Log({ S, commitState }) {
   const [date, setDate] = useState(todayISO)
   const [paste, setPaste] = useState('')
   const [vals, setVals] = useState({})

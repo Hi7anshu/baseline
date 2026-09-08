@@ -44,9 +44,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon-192.png', 'icon-512.png', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Baseline — Training & Body',
+        name: 'Baseline — Training, Sleep & Body',
         short_name: 'Baseline',
-        description: 'Recovery, body composition and nutrition, read from your Hevy training log.',
+        description: 'Sleep, recovery, training, food and body composition in one place, with your Hevy log read in.',
         theme_color: '#0d1117',
         background_color: '#0d1117',
         display: 'standalone',

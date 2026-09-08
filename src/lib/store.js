@@ -17,6 +17,8 @@ export const emptyState = () => ({
   overrides: {},     // exercise name -> your own identification, applied to every import
   measurements: [],  // [{ d, weight, neck, waist, hips, chest, arm, thigh, calf }]
   nutrition: [],     // [{ d, kcal, protein, carbs, fat }]
+  sleep: [],         // [{ d, bed, wake, latency, wakings, waso, quality, note, tags }]
+  checkins: [],      // [{ d, mood, energy, stress, soreness, note }]
   profile: {},       // { heightCm, sex, dob, activity } — only ever used for local maths
   unit: 'kg',
 })

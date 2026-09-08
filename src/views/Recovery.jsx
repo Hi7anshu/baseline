@@ -7,31 +7,33 @@ import { STRENGTH_FLOOR } from '../vendor/lib/recovery.js'
 import { groupValues, MAX, MIN } from '../lib/groups.js'
 import { recoveryRows, fmtEta, STATE_LABEL, FATIGUE_THRESHOLDS } from '../lib/eta.js'
 import { fatigueStateOf } from '../vendor/lib/recovery-view.js'
-import { fuelRead, conditionsByGroup, consequence } from '../lib/fuel.js'
+import { conditionsByGroup, consequence } from '../lib/fuel.js'
 import { deltVolume, HEADS } from '../lib/delts.js'
-import { dataAge, agoLabel, STALE_DAYS } from '../lib/freshness.js'
-import { targets, PROTEIN_LOW } from '../lib/nutrition.js'
-import FuelChart from '../components/FuelChart.jsx'
+import { dataAge, STALE_DAYS } from '../lib/freshness.js'
+import { readiness, bandOf, BAND_LABEL, verdict } from '../lib/readiness.js'
+import { derive as deriveNight, fmtDuration } from '../lib/sleep.js'
+import Ring from '../components/Ring.jsx'
 
 const LENSES = [
-  { id: 'fatigue', label: 'Fatigue' },
+  { id: 'today', label: 'Today' },
+  { id: 'muscles', label: 'Muscles' },
   { id: 'retention', label: 'Retention' },
-  { id: 'fuel', label: 'Fuel' },
 ]
 
 /**
- * Three questions about the same body.
+ * Three questions, at three altitudes.
  *
- * Fatigue asks what is too fresh to train; retention asks what has gone stale from *not* being
- * trained. They are opposite instructions — a muscle can be neither, or, after a layoff on one
- * side of the body, both — so they share a screen rather than sitting two tabs apart.
+ * Today is the doorway question — one number, and immediately underneath it, what that number is
+ * made of. Muscles is the body: what is too worked to train. Retention is the opposite worry,
+ * what has gone stale from *not* being trained; a muscle can be neither, or after a layoff both,
+ * which is why they sit on one screen rather than two tabs apart.
  *
- * Fuel is the third: not a state of the body but the conditions it was asked to recover under.
- * It is deliberately a separate lens rather than a factor inside the other two, because it does
- * not move either number — see `lib/fuel.js` for why that refusal is the honest position.
+ * Fuel used to be a fourth lens here and has moved to the Fuel tab. Sitting on Recovery it looked
+ * like an input to the recovery numbers, which it is not and cannot honestly be; Today now carries
+ * the one-line version and a way through to the detail.
  */
 export default function Recovery({ S, now, fatigue, strength, goTo }) {
-  const [lens, setLens] = useState('fatigue')
+  const [lens, setLens] = useState('today')
   const [selected, setSelected] = useState(null)
 
   return (
@@ -43,22 +45,194 @@ export default function Recovery({ S, now, fatigue, strength, goTo }) {
           </button>
         ))}
       </div>
-      {lens === 'fatigue' && (
-        <Fatigue
-          S={S} now={now} fatigue={fatigue} strength={strength}
-          selected={selected} setSelected={setSelected}
-          onFuel={() => setLens('fuel')} goTo={goTo}
+      {lens === 'today' && (
+        <Today
+          S={S} now={now} fatigue={fatigue} strength={strength} goTo={goTo}
+          onMuscles={() => setLens('muscles')}
+          onPick={slug => { setSelected(slug); setLens('muscles') }}
         />
       )}
+      {lens === 'muscles' && (
+        <Fatigue S={S} now={now} fatigue={fatigue} selected={selected} setSelected={setSelected} />
+      )}
       {lens === 'retention' && <Retention strength={strength} selected={selected} setSelected={setSelected} />}
-      {lens === 'fuel' && <FuelLens S={S} />}
+    </>
+  )
+}
+
+/* ------------------------------------------------------------------ today -- */
+
+// Each input keeps one colour everywhere it appears — in the ring, in its row, on the Sleep and
+// Fuel screens it links to. Four arbitrary hues would be decoration; these are the app's existing
+// state colours reused, so the ring is not introducing a fifth vocabulary.
+const SEG_COLOR = {
+  sleep: 'var(--seg-sleep)',
+  muscles: 'var(--seg-muscles)',
+  fuel: 'var(--seg-fuel)',
+  mind: 'var(--seg-mind)',
+}
+
+/**
+ * One number, and everything it is made of, on the same screen.
+ *
+ * The score is a weighted average of what has been logged — see `lib/readiness.js` for why it is
+ * built that way and what it deliberately is not. The rule this screen enforces is that the ring
+ * is never shown alone: every component sits underneath it with its own value, its weight, and a
+ * link to the screen it came from, so a number that disagrees with how you feel can be argued
+ * with rather than believed.
+ */
+function Today({ S, now, fatigue, strength, goTo, onMuscles, onPick }) {
+  const result = useMemo(() => readiness(S, fatigue), [S, fatigue])
+  const band = bandOf(result.score)
+  const age = useMemo(() => dataAge(S, now), [S.workouts, now])
+
+  const fuel = useMemo(() => conditionsByGroup(S, 14), [S])
+  const note = useMemo(() => consequence(fuel.summary), [fuel])
+
+  const night = useMemo(() => {
+    const rows = [...(S.sleep || [])].sort((a, b) => (a.d < b.d ? 1 : -1))
+    return rows[0] ? { ...rows[0], ...deriveNight(rows[0]) } : null
+  }, [S.sleep])
+
+  const picks = useMemo(() => {
+    const fat = groupValues(fatigue, MAX)
+    const ret = groupValues(strength, weakestTrained)
+    const rows = fat.map(g => ({
+      ...g,
+      state: fatigueStateOf(g.value),
+      retention: ret.find(r => r.id === g.id)?.value ?? 1,
+    }))
+    const ready = rows.filter(r => r.state === 'ready').sort((a, b) => a.retention - b.retention)
+    const rest = rows.filter(r => r.state !== 'ready').sort((a, b) => a.value - b.value)
+    const top = [...ready, ...rest].slice(0, 3)
+    const shown = new Set(top.map(p => p.id))
+    return {
+      top,
+      anyReady: ready.length > 0,
+      held: rows.filter(r => r.state === 'fatigued' && !shown.has(r.id)).sort((a, b) => b.value - a.value),
+    }
+  }, [fatigue, strength])
+
+  return (
+    <>
+      {age.stale && (
+        <button className="banner low" onClick={() => goTo?.('data')}>
+          <span className="bn-h">Nothing imported for {age.days} days</span>
+          <span className="bn-b">
+            Newest workout {age.newest}. Fatigue decays with the clock whether or not anything is
+            imported, so after {STALE_DAYS} days everything drifts toward ready on its own. Import ›
+          </span>
+        </button>
+      )}
+
+      <section className="card ring-card">
+        <Ring
+          value={result.score}
+          label={BAND_LABEL[band]}
+          sub={result.score == null ? 'nothing logged' : `${result.parts.length} of 4 inputs`}
+          band={band}
+          segments={result.parts.map(p => ({ id: p.id, share: p.share, value: p.value }))}
+        />
+        <p className="ring-verdict">{verdict(result)}</p>
+      </section>
+
+      <section className="card">
+        <h2 className="c-h">What that is made of</h2>
+        <ul className="drivers">
+          {result.parts.map(p => (
+            <li key={p.id}>
+              <button className="driver" onClick={() => (p.tab === 'recovery' ? onMuscles() : goTo?.(p.tab))}>
+                <span className="dr-dot" style={{ background: SEG_COLOR[p.id] }} />
+                <span className="dr-n">{p.label}</span>
+                <span className="dr-d">{p.detail}</span>
+                <span className="dr-v">{p.value}</span>
+                <span className="dr-w">{Math.round(p.share * 100)}%</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        {result.missing.length > 0 && (
+          <ul className="drivers missing">
+            {result.missing.map(m => (
+              <li key={m.id}>
+                <button className="driver off" onClick={() => goTo?.(m.tab)}>
+                  <span className="dr-dot" />
+                  <span className="dr-n">{m.label}</span>
+                  <span className="dr-d">{m.how} ›</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="foot">
+          A weighted average of what you logged — sleep 40, muscles 30, fuel 15, mind 15, with
+          anything missing dropped and the rest reweighted, so forgetting to log costs you
+          confidence rather than points. It is not a physiological measurement: Whoop reads heart-rate
+          variability off a strap, and nothing here touches your body. Weights are a judgement about
+          which inputs matter most, and the components are shown so you can disagree with the total.
+        </p>
+      </section>
+
+      {night && night.asleep != null && (
+        <section className="card">
+          <h2 className="c-h">Last night</h2>
+          <div className="stat-grid">
+            <div className="stat"><span className="stat-l">Asleep</span><span className="stat-v">{fmtDuration(night.asleep)}</span></div>
+            <div className="stat"><span className="stat-l">Efficiency</span><span className="stat-v">{night.efficiency == null ? '—' : `${Math.round(night.efficiency * 100)}%`}</span></div>
+            <div className="stat"><span className="stat-l">Wakings</span><span className="stat-v">{night.wakings ?? '—'}</span></div>
+          </div>
+          <p className="foot">
+            Night of {night.d}{night.note ? ` — ${night.note}` : ''}.{' '}
+            <button className="linkish" onClick={() => goTo?.('sleep')}>Open the diary ›</button>
+          </p>
+        </section>
+      )}
+
+      <section className="card">
+        <h2 className="c-h">Train today</h2>
+        <ul className="picks-today">
+          {picks.top.map(g => (
+            <li key={g.id}>
+              <button className={'today-row ' + g.state} onClick={() => onPick(g.muscles[0].slug)}>
+                <span className="t-n">{g.name}</span>
+                <span className="t-v">{Math.round(g.value * 100)}<small>% fatigued</small></span>
+                <span className={'t-r' + (g.retention < 0.9 ? ' fading' : '')}>
+                  {Math.round(g.retention * 100)}<small>% held</small>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <p className="foot">
+          {picks.anyReady
+            ? 'Recovered groups first, most detrained among them at the top — where two are equally ready, the one that has been waiting longest is the one worth the session.'
+            : 'Nothing is in the ready band right now, so these are simply the freshest. A group takes its most fatigued muscle, which is what limits the session.'}
+          {picks.held.length > 0 && (
+            <> Leave {picks.held.slice(0, 3).map(g => g.name.toLowerCase()).join(', ')}
+            {picks.held.length > 3 ? ` and ${picks.held.length - 3} more` : ''}: still fatigued.</>
+          )}
+        </p>
+      </section>
+
+      {note && note.state !== 'ok' && !age.stale && (
+        <button className={'banner ' + note.state} onClick={() => goTo?.('fuel')}>
+          <span className="bn-h">{note.head}</span>
+          <span className="bn-b">
+            {fuel.summary.thin > 0
+              ? `${fuel.summary.thin} of ${fuel.summary.trainingDays} training days in the last 14 were under-fuelled.`
+              : `${fuel.summary.unknown} of ${fuel.summary.trainingDays} training days have no intake logged.`}
+            {' '}See it against your training ›
+          </span>
+        </button>
+      )}
     </>
   )
 }
 
 /* ---------------------------------------------------------------- fatigue -- */
 
-function Fatigue({ S, now, fatigue, strength, selected, setSelected, onFuel, goTo }) {
+
+function Fatigue({ S, now, fatigue, selected, setSelected }) {
   const rows = useMemo(() => recoveryRows(fatigue), [fatigue])
   const byState = useMemo(() => {
     const counts = { ready: 0, recovering: 0, fatigued: 0 }
@@ -91,97 +265,8 @@ function Fatigue({ S, now, fatigue, strength, selected, setSelected, onFuel, goT
     return deltVolume(S.workouts.filter(w => (w.start || new Date(w.d).getTime()) > cutoff))
   }, [S.workouts])
 
-  // Fuel qualifies these numbers, so the qualification belongs on this screen rather than one
-  // lens away where it would only be read by someone already looking for it.
-  const fuel = useMemo(() => conditionsByGroup(S, deltDays), [S])
-  const note = useMemo(() => consequence(fuel.summary), [fuel])
-
-  const age = useMemo(() => dataAge(S, now), [S.workouts, now])
-
-  // What is both recovered and most in need of the work — the question this screen is opened to
-  // answer, previously left to be assembled out of two lists.
-  //
-  // A group takes its most fatigued muscle, so whole groups clear the "ready" band far less
-  // often than individual muscles do. Showing only fully-ready groups therefore produced an
-  // empty card on most days, which is useless on the gym floor: the real question is not "what
-  // is perfect" but "what is the best thing available now". So the list is always the three
-  // freshest, each labelled with the band it is actually in.
-  const today = useMemo(() => {
-    const fat = groupValues(fatigue, MAX)
-    const ret = groupValues(strength, weakestTrained)
-    const rows = fat.map(g => ({
-      ...g,
-      state: fatigueStateOf(g.value),
-      retention: ret.find(r => r.id === g.id)?.value ?? 1,
-    }))
-
-    // Ready first and, among those, most detrained first — equally recovered muscles are
-    // separated by which has been waiting longest. Everything else follows on freshness.
-    const ready = rows.filter(r => r.state === 'ready').sort((a, b) => a.retention - b.retention)
-    const rest = rows.filter(r => r.state !== 'ready').sort((a, b) => a.value - b.value)
-
-    const picks = [...ready, ...rest].slice(0, 3)
-    const shown = new Set(picks.map(p => p.id))
-    return {
-      picks,
-      anyReady: ready.length > 0,
-      // Never name a group as one to leave while it is also being offered above — on a week
-      // where nothing is fresh, the three least-cooked groups are still in the fatigued band.
-      held: rows.filter(r => r.state === 'fatigued' && !shown.has(r.id)).sort((a, b) => b.value - a.value),
-    }
-  }, [fatigue, strength])
-
   return (
     <>
-      {age.stale && (
-        <button className="banner low" onClick={() => goTo?.('data')}>
-          <span className="bn-h">Nothing imported for {age.days} days</span>
-          <span className="bn-b">
-            Newest workout {age.newest}. Fatigue decays with the clock whether or not anything is
-            imported, so after {STALE_DAYS} days everything drifts toward ready on its own.
-            Import ›
-          </span>
-        </button>
-      )}
-
-      {note && note.state !== 'ok' && !age.stale && (
-        <button className={'banner ' + note.state} onClick={onFuel}>
-          <span className="bn-h">{note.head}</span>
-          <span className="bn-b">
-            {fuel.summary.thin > 0
-              ? `${fuel.summary.thin} of ${fuel.summary.trainingDays} training days in the last ${deltDays} were under-fuelled.`
-              : `${fuel.summary.unknown} of ${fuel.summary.trainingDays} training days have no intake logged.`}
-            {' '}Open Fuel ›
-          </span>
-        </button>
-      )}
-
-      <section className="card">
-        <h2 className="c-h">Train today</h2>
-        <ul className="picks-today">
-          {today.picks.map(g => (
-            <li key={g.id}>
-              <button className={'today-row ' + g.state} onClick={() => setSelected(g.muscles[0].slug)}>
-                <span className="t-n">{g.name}</span>
-                <span className="t-v">{Math.round(g.value * 100)}<small>% fatigued</small></span>
-                <span className={'t-r' + (g.retention < 0.9 ? ' fading' : '')}>
-                  {Math.round(g.retention * 100)}<small>% held</small>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-        <p className="foot">
-          {today.anyReady
-            ? 'Recovered groups first, most detrained among them at the top — where two are equally ready, the one that has been waiting longest is the one worth the session.'
-            : 'Nothing is in the ready band right now, so these are simply the freshest. A group takes its most fatigued muscle, which is what limits the session.'}
-          {today.held.length > 0 && (
-            <> Leave {today.held.slice(0, 3).map(g => g.name.toLowerCase()).join(', ')}
-            {today.held.length > 3 ? ` and ${today.held.length - 3} more` : ''}: still fatigued.</>
-          )}
-        </p>
-      </section>
-
       <section className="card">
         <div className="verdict">
           <div className="v-col"><span className="v-n">{byState.ready}</span><span className="v-l ready">ready</span></div>
@@ -358,145 +443,6 @@ function DeltSplit({ delts, days }) {
 }
 
 const round1 = v => Math.round(v * 10) / 10
-
-/* ------------------------------------------------------------------- fuel -- */
-
-/**
- * What the body was given to recover with.
- *
- * The chart answers one question the other two lenses cannot: did the hard days get fed. It
- * reports and does not score — the fatigue percentages on the first lens are identical whether
- * this page shows a fed week or a starved one, and the note at the bottom says so out loud
- * rather than leaving the omission to be discovered.
- */
-function FuelLens({ S }) {
-  const [days, setDays] = useState(14)
-  const [metric, setMetric] = useState('protein')
-
-  const { coverage, readings, rows } = useMemo(() => fuelRead(S, days), [S, days])
-  const cond = useMemo(() => conditionsByGroup(S, days), [S, days])
-  const note = useMemo(() => consequence(cond.summary), [cond])
-
-  const weightKg = S.bodyweight?.length ? S.bodyweight[S.bodyweight.length - 1].w : null
-  const goals = useMemo(() => targets(S.profile, weightKg), [S.profile, weightKg])
-  const goal = metric === 'kcal'
-    ? goals?.tdee ?? null
-    : weightKg ? Math.round(weightKg * PROTEIN_LOW) : null
-
-  return (
-    <>
-      <section className="card">
-        <div className="d-head">
-          <h2 className="c-h">Intake against load</h2>
-          <div className="seg tight">
-            {[7, 14, 30].map(d => (
-              <button key={d} className={'seg-b' + (days === d ? ' on' : '')} onClick={() => setDays(d)}>
-                {d}d
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="seg">
-          {[['protein', 'Protein'], ['kcal', 'Calories']].map(([id, label]) => (
-            <button key={id} className={'seg-b' + (metric === id ? ' on' : '')} onClick={() => setMetric(id)}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <FuelChart rows={rows} metric={metric} unit={metric === 'kcal' ? 'kcal' : 'g'} goal={goal} />
-
-        <div className="verdict" style={{ marginTop: 14, marginBottom: 0 }}>
-          <div className="v-col">
-            <span className="v-n">{coverage.logged}<small>/{coverage.days}</small></span>
-            <span className="v-l">days logged</span>
-          </div>
-          <div className="v-col">
-            <span className="v-n">{coverage.trainingDays}</span>
-            <span className="v-l">training days</span>
-          </div>
-          <div className="v-col">
-            <span className="v-n">{coverage.totalSets}</span>
-            <span className="v-l">working sets</span>
-          </div>
-        </div>
-
-        <p className="foot">
-          Bars are working sets per day, the line is what you logged under <strong>Fuel</strong>.
-          The line breaks across days you did not log rather than joining over them — a segment
-          drawn through a gap would be a meal that never happened.
-        </p>
-      </section>
-
-      <section className="card">
-        <h2 className="c-h">What this does to recovery</h2>
-        {note ? (
-          <>
-            <div className={'callout ' + note.state}>
-              <strong>{note.head}</strong>
-              <p>{note.body}</p>
-            </div>
-
-            {cond.groups.length > 0 && (
-              <>
-                <h3 className="sub-h">The work those days carried</h3>
-                <ul className="rows grouped cond">
-                  {cond.groups.map(g => (
-                    <li key={g.id} className="row static cond-row">
-                      <span className="r-name">{g.name}</span>
-                      <span className="bar split" title={`${round1(g.fed)} fed, ${round1(g.thin)} under-fuelled, ${round1(g.unknown)} unlogged`}>
-                        <i className="fill fed" style={{ width: pct(g.fed, g.total) }} />
-                        <i className="fill thin" style={{ width: pct(g.thin, g.total) }} />
-                        <i className="fill unknown" style={{ width: pct(g.unknown, g.total) }} />
-                      </span>
-                      <span className={'r-eta ' + g.verdict}>{LABEL[g.verdict]}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="fc-key">
-                  <span><i className="k-fed" /> Fed</span>
-                  <span><i className="k-thin" /> Under-fuelled</span>
-                  <span><i className="k-unknown" /> Not logged</span>
-                </div>
-                <p className="foot">
-                  Each bar is that group's effective sets over {days} days, split by the state of
-                  the day they were done on. A group is called under-fuelled only when most of its
-                  work landed on days under the protein floor or well under the burn estimate —
-                  one thin day in a fortnight says nothing about a muscle.
-                </p>
-              </>
-            )}
-          </>
-        ) : (
-          <p className="p">Nothing trained in this window, so there is nothing for intake to have supported.</p>
-        )}
-      </section>
-
-      <section className="card">
-        <h2 className="c-h">Reading</h2>
-        <ul className="reads">
-          {readings.map((r, i) => <li key={i} className={r.state}>{r.text}</li>)}
-        </ul>
-      </section>
-
-      <section className="card">
-        <h2 className="c-h">Why there is no fuel-adjusted score</h2>
-        <p className="foot">
-          Nothing on this page changes a fatigue or retention percentage. Protein and energy
-          really do gate repair, which is why the effect is stated as how much to trust the
-          clock — there is no measured function from a day's calories to a percentage of muscle
-          readiness, and openGym's model has no input for one: it reads sets, load and time.
-          A number invented to fill that gap would be indistinguishable, later, from a measured
-          one.
-        </p>
-      </section>
-    </>
-  )
-}
-
-const LABEL = { fed: 'fed', thin: 'thin', unknown: 'unlogged' }
-const pct = (v, total) => `${total > 0 ? (v / total) * 100 : 0}%`
 
 function relDay(iso, now) {
   const days = Math.floor((now - new Date(iso + 'T12:00:00').getTime()) / 86400000)

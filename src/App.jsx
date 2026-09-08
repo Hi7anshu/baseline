@@ -7,20 +7,23 @@ import { applyTheme, watchSystem } from './lib/theme.js'
 import Recovery from './views/Recovery.jsx'
 import Training from './views/Training.jsx'
 import Body from './views/Body.jsx'
+import Sleep from './views/Sleep.jsx'
 import Fuel from './views/Fuel.jsx'
 import Data from './views/Data.jsx'
 
 const TABS = [
   { id: 'recovery', label: 'Recovery', icon: '◱' },
   { id: 'training', label: 'Training', icon: '▤' },
+  { id: 'sleep', label: 'Sleep', icon: '☾' },
   { id: 'body', label: 'Body', icon: '⬡' },
   { id: 'fuel', label: 'Fuel', icon: '◈' },
   { id: 'data', label: 'Data', icon: '⇄' },
 ]
 
-// Recovery and Training are read-only views of imported training, so they have nothing to show
-// until something is imported. Body and Fuel are logged here directly and work from empty.
-const NEEDS_TRAINING = new Set(['recovery', 'training'])
+// Training is a read-only view of the imported log, so it has nothing to show until something is
+// imported. Recovery now leads with a readiness score built mostly from things logged here, so it
+// works from empty too — as do Sleep, Body and Fuel.
+const NEEDS_TRAINING = new Set(['training'])
 
 export default function App() {
   const [S, setS] = useState(emptyState)
@@ -114,6 +117,7 @@ export default function App() {
           <>
             {tab === 'recovery' && <Recovery {...shared} />}
             {tab === 'training' && <Training {...shared} />}
+            {tab === 'sleep' && <Sleep {...shared} />}
             {tab === 'body' && <Body {...shared} />}
             {tab === 'fuel' && <Fuel {...shared} />}
             {tab === 'data' && <Data {...shared} />}

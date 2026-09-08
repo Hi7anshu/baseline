@@ -6,6 +6,7 @@ import { exportJSON, parseBackup, emptyState } from '../lib/store.js'
 import { THEMES, resolveTheme } from '../lib/theme.js'
 import { canLink, linkFile, linkedFile, readLinked, forgetLink } from '../lib/linked-file.js'
 import { dataAge, agoLabel, STALE_DAYS } from '../lib/freshness.js'
+import { buildDigest, DIGEST_PROMPT } from '../lib/digest.js'
 import Unidentified from './Unidentified.jsx'
 
 /**
@@ -15,7 +16,7 @@ import Unidentified from './Unidentified.jsx'
  * needs Hevy Pro but keeps itself current without you doing anything. Both land in the same
  * state, so switching later costs nothing.
  */
-export default function Data({ S, settings, commitState, commitSettings }) {
+export default function Data({ S, settings, fatigue, commitState, commitSettings }) {
   const [busy, setBusy] = useState(null)
   const [msg, setMsg] = useState(null)
   const [err, setErr] = useState(null)
@@ -368,6 +369,8 @@ export default function Data({ S, settings, commitState, commitSettings }) {
         </div>
       </section>
 
+      <Digest S={S} fatigue={fatigue} />
+
       <section className="card">
         <h2 className="c-h">Appearance</h2>
         <div className="seg">
@@ -402,3 +405,66 @@ export default function Data({ S, settings, commitState, commitSettings }) {
 }
 
 const daysSince = ms => Math.max(0, Math.floor((Date.now() - ms) / 86400000))
+
+/**
+ * Hand the data to Claude without handing it a key.
+ *
+ * There is no API call here and there is not going to be one: a Claude Pro or Max subscription
+ * does not include API access — that is billed separately through the Anthropic console — and
+ * this app is a static page in a public repo, so any key it carried would ship to every visitor
+ * and there is no server to keep one on. Copying a written summary into a conversation you are
+ * already signed into gets the same answer, costs nothing, and keeps the data on the device until
+ * you choose to paste it.
+ */
+function Digest({ S, fatigue }) {
+  const [days, setDays] = useState(30)
+  const [copied, setCopied] = useState(null)
+  const [preview, setPreview] = useState(false)
+
+  const text = useMemo(() => buildDigest(S, fatigue, days), [S, fatigue, days])
+
+  async function copy(what) {
+    try {
+      await navigator.clipboard.writeText(what === 'both' ? DIGEST_PROMPT + text : text)
+      setCopied(what)
+      setTimeout(() => setCopied(null), 2400)
+    } catch {
+      setPreview(true)
+    }
+  }
+
+  return (
+    <section className="card">
+      <div className="d-head">
+        <h2 className="c-h">Ask Claude about all of it</h2>
+        <div className="seg tight">
+          {[14, 30, 90].map(d => (
+            <button key={d} className={'seg-b' + (days === d ? ' on' : '')} onClick={() => setDays(d)}>{d}d</button>
+          ))}
+        </div>
+      </div>
+      <p className="p">
+        Writes {days} days of training, sleep, food, body and mood into one summary with a question
+        attached, ready to paste into Claude. Nothing is sent from here — the app has no key and no
+        server, so the data moves only when you paste it.
+      </p>
+      <div className="btn-row">
+        <button className="btn primary" onClick={() => copy('both')}>
+          {copied === 'both' ? 'Copied' : 'Copy question + data'}
+        </button>
+        <button className="btn" onClick={() => copy('data')}>
+          {copied === 'data' ? 'Copied' : 'Data only'}
+        </button>
+      </div>
+      <button className="btn" style={{ marginTop: 8 }} onClick={() => setPreview(p => !p)}>
+        {preview ? 'Hide' : 'Show what gets copied'}
+      </button>
+      {preview && <pre className="prompt" style={{ marginTop: 12 }}>{text}</pre>}
+      <p className="foot">
+        A Claude subscription does not come with an API key — API access is billed separately
+        through the Anthropic console — and a key inside a public static app would be readable by
+        anyone who opened it. This is the version that works without either.
+      </p>
+    </section>
+  )
+}

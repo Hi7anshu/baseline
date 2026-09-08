@@ -42,6 +42,10 @@ Two facts make the no-server design possible. Verify both still hold before assu
 | Light / dark / system theme | Done — `lib/theme.js`, chosen under Data → Appearance |
 | Training → Sessions (heatmap, weekly volume, the log itself) | Done |
 | Recovery → Train today | Done |
+| Recovery → Today: readiness ring + input breakdown | Done — see the rule below |
+| Sleep diary + daily check-in (`views/Sleep.jsx`) | Done |
+| Sleep/mood correlations (Sleep → Patterns) | Done, gated at 8 paired days |
+| Claude digest (Data → Ask Claude about all of it) | Done — copy/paste, no API key |
 | Linked export file + one-button refresh | Done **where the browser allows it** — see below |
 | Stale-data warning | Done — `lib/freshness.js`, banner on Recovery, note on Data |
 | Hevy API sync | **Written, never run against a real key** — he has no Pro, see below |
@@ -56,6 +60,62 @@ He confirmed on 2026-09-07 that he has no Pro key and cannot test the API path. 
 - `/v1/body_measurements` is likewise unavailable. Body weight came in through the file import,
   which means **the body-weight import path is now tested against a real file** and works.
 - Stop asking him to check. It is settled until he says otherwise.
+
+## The readiness ring, and the rule attached to it
+
+Recovery leads with a Whoop-style dial. Whoop's number comes off a strap — heart-rate
+variability, resting heart rate, measured sleep stages. **Baseline has no sensor of any kind.**
+Its score is a weighted average of four things that were logged or modelled: sleep 40, muscles
+30, fuel 15, mind 15, renormalised over whatever is present so a missing input costs confidence
+rather than points.
+
+The rule, which is not negotiable and is the reason the feature is defensible at all: **the ring
+is never rendered without the breakdown underneath it.** Every component shows its own value, its
+weight and a link to the screen it came from, and the ring's arcs are per-component — each input
+fills its own slice in proportion to its own score, so the weak input is visible from across the
+room. A dial made of self-report that looked like a sensor reading would be a lie of presentation,
+and the number is the part people remember. If you ever find yourself adding a second screen that
+shows the score alone, don't.
+
+Where the weights came from: sleep first because it has the largest evidenced effect on next-day
+function and because it is what he is here to fix; muscles second as the only modelled component;
+fuel and mind smaller because they are coarser measurements, not because they matter less. They
+are a judgement, they are stated in the UI as a judgement, and they are one constant
+(`WEIGHTS` in `lib/readiness.js`) if they need revisiting.
+
+## Sleep is a diary, not a tracker readout
+
+`lib/sleep.js` records to-bed, got-up, minutes to fall asleep, wakings, minutes awake in the
+night, and a 1–5 rating. Those are the fields of a standard sleep diary, and they are chosen
+against the actual complaint: he has trouble getting to sleep and wakes in the night, which is a
+*continuity* problem, and hours-slept is the number that says least about it. Efficiency (asleep
+÷ in bed) is the headline for that reason — it separates "not enough sleep" from "nine hours in
+bed, five asleep", which have opposite fixes.
+
+Thresholds (`POOR_EFFICIENCY` 85%, `LONG_LATENCY` 30 min, `HIGH_WASO` 30 min) are the
+conventional ones from sleep medicine, not invented here. The app says so, says it is not a
+diagnosis, and points at a doctor for persistent insomnia — keep all three of those. The one piece
+of advice it gives (shorten time in bed rather than going to bed earlier) is the standard first
+move in sleep restriction, and it is worded as what the standard move is, not as a prescription.
+
+The Patterns tab correlates sleep against next-day mood, energy and soreness. It is quarantined
+on its own tab, needs 8 paired days, reports Pearson's r with the count, and says "moved
+together" everywhere. Two weeks of one person's self-report cannot separate cause from
+coincidence, and a bad week at work moves stress, sleep and mood together without any of them
+causing the others. Do not upgrade that language.
+
+## The Claude digest, and the API key question
+
+He asked whether his Claude Pro subscription includes an API key. It does not — API access is
+billed separately through the Anthropic console — and beyond that, **this app could not hold a
+key even if he had one**: it is a static page in a public repo, so a key in client-side code
+ships to every visitor, and there is no server to keep one on without breaking the constraint the
+whole app exists under.
+
+So `lib/digest.js` writes a markdown summary — readiness, sleep table, mood, training, fuel, body,
+plus a footer explaining every model involved — and Data copies it to the clipboard with a
+question attached. Nothing leaves the device until he pastes it. If a future session is asked for
+"AI insights in the app", that is the answer, and the reasoning above is why.
 
 ## The linked file, and why it is not on his phone
 
@@ -196,6 +256,10 @@ good news. `lib/freshness.js` reports the age of the newest workout; past `STALE
 Recovery banner and the Data note both say so. A gap in the data and a week off are
 indistinguishable from inside, so neither claims to know which it was.
 
+**Six tabs is the ceiling.** Recovery, Training, Sleep, Body, Fuel, Data. Anything further gets a
+lens inside an existing tab, not a seventh icon — the strip is already at the width where labels
+start truncating on a small phone.
+
 **Theming is token-only.** `styles.css` defines every surface, ink and ramp as a variable on
 `:root`, and `:root[data-theme="light"]` redefines them. A hardcoded hex anywhere else silently
 breaks one theme — the palettes are matched on meaning (`--l0` is always "least of it"), not on
@@ -221,6 +285,8 @@ directly. No code change needed.
 **Ideas not started**, roughly in value order:
 1. **Web Share Target** for the Android import flow — see the section above, including why it was
    held back.
+2. **Sleep against training load** — the pairing not yet drawn: late sessions against that night's
+   onset. `lib/journal.js`'s `correlate()` takes any two series, so it is a view, not new maths.
 2. **`progression.js`** — openGym's next-weight suggestions. Lower value, since he programmes in
    Hevy and would act there, not here.
 

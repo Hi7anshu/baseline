@@ -122,7 +122,7 @@ body {
 }
 
 .tabs {
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(6, 1fr);
   flex: 0 0 auto;
   border-top: 1px solid var(--line);
   /* Opaque rather than blurred. Nothing scrolls under the tab bar — it sits outside the
@@ -613,3 +613,61 @@ select.input { appearance: none; }
 .t-v, .t-r { font-size: 13px; color: var(--dim); font-variant-numeric: tabular-nums; }
 .t-v small, .t-r small { font-size: 10.5px; color: var(--faint); margin-left: 2px; }
 .t-r.fading { color: var(--recovering); }
+
+/* ------------------------------------------------------------------ ring -- */
+
+/* The one screen that leads with a picture rather than a table. Whoop's influence is the shape —
+   a single dial you can read from across a room — not its claim: the breakdown below the ring is
+   mandatory, because a dial made of self-report should never be mistaken for a sensor reading. */
+.ring-card { display: grid; justify-items: center; gap: 14px; padding-top: 22px; }
+.ring { position: relative; display: grid; place-items: center; }
+.ring svg { display: block; }
+.ring-in {
+  position: absolute; inset: 0; display: grid; place-content: center; justify-items: center;
+  gap: 1px; text-align: center;
+}
+.ring-v { font-size: 42px; font-weight: 680; letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1; }
+.ring-v.ready { color: var(--ready); }
+.ring-v.recovering { color: var(--recovering); }
+.ring-v.fatigued { color: var(--fatigued); }
+.ring-v.flat { color: var(--faint); }
+.ring-l { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin-top: 4px; }
+.ring-s { font-size: 11px; color: var(--faint); }
+.ring-verdict { margin: 0; font-size: 14px; line-height: 1.6; text-align: center; color: var(--ink); max-width: 34ch; }
+
+/* Input colours, defined once and used by both the ring segments and the dots beside the
+   breakdown rows — the same input must be the same colour in both or the ring stops being a
+   legend for the list. Mind gets a hue of its own rather than borrowing the amber: next to the
+   fuel orange, two warm tones were indistinguishable at dot size, especially on the light theme. */
+:root { --seg-sleep: var(--accent); --seg-muscles: var(--ready); --seg-fuel: var(--l4); --seg-mind: #a371f7; }
+:root[data-theme="light"] { --seg-mind: #6f42c1; }
+
+/* --------------------------------------------------------------- drivers -- */
+
+.drivers { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.drivers.missing { margin-top: 6px; }
+.driver {
+  appearance: none; width: 100%; font: inherit; text-align: left; cursor: pointer;
+  display: grid; grid-template-columns: 8px auto 1fr auto auto; align-items: baseline; gap: 10px;
+  padding: 11px 12px; border: 0; border-radius: 10px; background: var(--sunk); color: var(--ink);
+}
+.dr-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); align-self: center; }
+.dr-n { font-size: 14px; font-weight: 600; }
+.dr-d { font-size: 11.5px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dr-v { font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.dr-w { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; min-width: 2.4rem; text-align: right; }
+.driver.off { opacity: .72; grid-template-columns: 8px auto 1fr; }
+.driver.off .dr-n { font-weight: 550; color: var(--dim); }
+.driver.off .dr-d { white-space: normal; }
+
+.linkish {
+  appearance: none; border: 0; background: none; padding: 0; font: inherit; font-size: inherit;
+  color: var(--accent); cursor: pointer;
+}
+
+/* ----------------------------------------------------------------- sleep -- */
+
+.date-in { width: auto; margin: 0; padding: 7px 10px; font-size: 13px; }
+.night-row { grid-template-columns: 1fr auto; }
+.night-row .hist-cells em.bad { color: var(--fatigued); }
+.field .chips.pickable { margin-top: 2px; }
