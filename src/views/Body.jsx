@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import LineChart from '../vendor/components/LineChart.jsx'
-import { FIELDS, derive, weightNear } from '../lib/body.js'
+import { FIELDS, MEASURING_RULES, derive, weightNear } from '../lib/body.js'
 import { ACTIVITY, ageFrom, targets } from '../lib/nutrition.js'
 
 const todayISO = () => {
@@ -104,7 +104,7 @@ function Log({ S, commitState }) {
               <span>Date</span>
               <input className="input" type="date" value={date} onChange={e => setDate(e.target.value)} />
             </label>
-            <div className="field-grid">
+            <div className="field-grid wide">
               {FIELDS.map(f => (
                 <label key={f.key} className="field">
                   <span>{f.label} <em>{f.unit}</em></span>
@@ -117,18 +117,28 @@ function Log({ S, commitState }) {
                     value={vals[f.key] ?? ''}
                     onChange={e => setVals(v => ({ ...v, [f.key]: e.target.value }))}
                   />
+                  <em className="field-how">{f.how}</em>
                 </label>
               ))}
             </div>
+            <p className="foot" style={{ margin: '0 0 12px' }}>
+              Fill in only what you took — a blank is left blank rather than carried over, so a
+              short session with the tape is still worth saving.
+            </p>
             <button className="btn primary" onClick={save}>Save measurement</button>
           </div>
         )}
 
         {!open && !latest && (
-          <p className="p">
-            Nothing logged yet. Weight and waist alone already give you a trend; add neck as well
-            and body fat becomes available.
-          </p>
+          <>
+            <p className="p">
+              Nothing logged yet. Weight and waist alone already give you a trend; add neck as well
+              and body fat becomes available. Chest, arm, thigh and calf each start charting under
+              <strong> Trend</strong> from their first reading — which is why only Weight is there
+              at the moment.
+            </p>
+            <button className="btn primary" onClick={() => setOpen(true)}>Take the first set</button>
+          </>
         )}
 
         {!open && latest && (
@@ -160,6 +170,8 @@ function Log({ S, commitState }) {
           </div>
         )}
       </section>
+
+      <HowToMeasure />
 
       <Trends S={S} profile={profile} entries={entries} />
 
@@ -292,6 +304,65 @@ function Trends({ S, profile, entries }) {
 }
 
 const round1 = v => Math.round(v * 10) / 10
+
+/* ------------------------------------------------------------ how to measure -- */
+
+/**
+ * The technique guide, kept in the app rather than in a link.
+ *
+ * A tape measure is a precise instrument used badly by default, and the failure is invisible:
+ * measuring your arm two inches higher than last month produces a clean number that means
+ * nothing. Everything here exists to hold the conditions still, because repeatability — not
+ * accuracy — is what makes the trend readable.
+ */
+function HowToMeasure() {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <section className="card">
+      <div className="d-head">
+        <h2 className="c-h">How to measure</h2>
+        <button className="btn small" onClick={() => setOpen(o => !o)}>{open ? 'Hide' : 'Read'}</button>
+      </div>
+
+      {!open ? (
+        <p className="p" style={{ margin: 0 }}>
+          Consistency beats accuracy: the same spot, same time of day, same tape. Six rules and the
+          landmark for each site.
+        </p>
+      ) : (
+        <>
+          <ul className="reads">
+            {MEASURING_RULES.map(r => (
+              <li key={r.head} className="flat">
+                <strong>{r.head}</strong> — {r.body}
+              </li>
+            ))}
+          </ul>
+
+          <h3 className="sub-h">Where the tape goes</h3>
+          <ul className="rows">
+            {FIELDS.filter(f => f.key !== 'weight').map(f => (
+              <li key={f.key} className="row static site-row">
+                <span className="r-name">{f.label}</span>
+                <span className="site-how">{f.how}</span>
+              </li>
+            ))}
+          </ul>
+
+          <p className="foot">
+            Waist is the one people get wrong: the body-fat estimate here uses the US Navy method,
+            which is fitted to a waist measured at the navel for men. Measuring at the narrowest
+            point instead reads two to four centimetres smaller and quietly hands you a body-fat
+            figure several points too low. The number only has to be taken the same way each time
+            for the trend to work — but for the absolute figure to mean anything, it has to be taken
+            the way the equation expects.
+          </p>
+        </>
+      )}
+    </section>
+  )
+}
 
 function Stat({ label, value, unit, delta, estimate, good }) {
   return (

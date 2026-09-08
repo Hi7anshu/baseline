@@ -671,3 +671,19 @@ select.input { appearance: none; }
 .night-row { grid-template-columns: 1fr auto; }
 .night-row .hist-cells em.bad { color: var(--fatigued); }
 .field .chips.pickable { margin-top: 2px; }
+
+/* --------------------------------------------------- measurement guidance -- */
+
+/* Technique sits under the input it applies to. It is long-ish text in a small space, which is
+   the right trade: the number is worthless if the tape was in the wrong place, and nobody opens
+   a separate help page while holding a tape measure. */
+.field-how {
+  font-style: normal; font-size: 11.5px; line-height: 1.45; color: var(--faint);
+  text-transform: none; letter-spacing: 0;
+}
+.field-grid.wide { grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 520px) { .field-grid.wide { grid-template-columns: 1fr 1fr; } }
+
+.site-row { grid-template-columns: 4.6rem 1fr; align-items: start; gap: 12px; padding: 10px 8px; }
+.site-row .r-name { font-weight: 600; white-space: normal; }
+.site-how { font-size: 12.5px; line-height: 1.5; color: var(--dim); }

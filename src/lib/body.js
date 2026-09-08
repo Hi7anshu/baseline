@@ -54,16 +54,81 @@ export function leanMass(weightKg, bodyFatPct, heightCm) {
   return { fatFreeKg, fatKg: weightKg - fatFreeKg, ffmi }
 }
 
-/** The fields a measurement entry can carry, in the order the form shows them. */
+/**
+ * The fields a measurement entry can carry, in the order the form shows them.
+ *
+ * Each carries the landmark it is taken from, because a tape measure is only as good as the
+ * repeatability of where you put it: a centimetre of real change is smaller than the error from
+ * measuring your arm two inches further up than last time. The wording names a bony landmark
+ * wherever one exists, since those do not move as you gain or lose.
+ */
 export const FIELDS = [
-  { key: 'weight', label: 'Weight', unit: 'kg', step: 0.1 },
-  { key: 'neck', label: 'Neck', unit: 'cm', step: 0.5, hint: 'needed for body fat' },
-  { key: 'waist', label: 'Waist', unit: 'cm', step: 0.5, hint: 'needed for body fat' },
-  { key: 'hips', label: 'Hips', unit: 'cm', step: 0.5 },
-  { key: 'chest', label: 'Chest', unit: 'cm', step: 0.5 },
-  { key: 'arm', label: 'Arm', unit: 'cm', step: 0.5 },
-  { key: 'thigh', label: 'Thigh', unit: 'cm', step: 0.5 },
-  { key: 'calf', label: 'Calf', unit: 'cm', step: 0.5 },
+  {
+    key: 'weight', label: 'Weight', unit: 'kg', step: 0.1,
+    how: 'Same scale, same spot on the floor, first thing after the toilet and before eating or drinking.',
+  },
+  {
+    key: 'neck', label: 'Neck', unit: 'cm', step: 0.5, hint: 'needed for body fat',
+    how: 'Just below the larynx, tape sloping very slightly downward at the front. Shoulders down, do not flare the neck out.',
+  },
+  {
+    key: 'waist', label: 'Waist', unit: 'cm', step: 0.5, hint: 'needed for body fat',
+    how: 'Horizontal, level with the navel — that is the site the Navy body-fat equation is fitted to, not the narrowest point. Relaxed, at the end of a normal breath out.',
+  },
+  {
+    key: 'hips', label: 'Hips', unit: 'cm', step: 0.5,
+    how: 'Widest point of the buttocks, feet together, tape level all the way round.',
+  },
+  {
+    key: 'chest', label: 'Chest', unit: 'cm', step: 0.5,
+    how: 'Across the nipple line, arms hanging, at the end of a normal breath out. Not a full inhale — that measures your lungs.',
+  },
+  {
+    key: 'arm', label: 'Arm', unit: 'cm', step: 0.5,
+    how: 'Midway between the point of the shoulder and the elbow. Pick relaxed-hanging or flexed and never change: the gap between them is bigger than a year of growth.',
+  },
+  {
+    key: 'thigh', label: 'Thigh', unit: 'cm', step: 0.5,
+    how: 'Midway between the hip crease and the top of the kneecap, standing, weight even on both legs. Same leg every time.',
+  },
+  {
+    key: 'calf', label: 'Calf', unit: 'cm', step: 0.5,
+    how: 'Widest point, standing with weight on both feet. Same leg every time.',
+  },
+]
+
+/**
+ * The rules that decide whether a tape measure tells you anything.
+ *
+ * Accuracy barely matters here and repeatability is everything: an arm measured consistently 3 mm
+ * too high still shows growth correctly, while one measured in a different place each month shows
+ * noise you will read as progress or panic. Everything below exists to hold the conditions still.
+ */
+export const MEASURING_RULES = [
+  {
+    head: 'Morning, before anything',
+    body: 'After the toilet, before food, drink or training. A meal, a litre of water or a hard session can move a waist reading by a centimetre without a gram of tissue changing.',
+  },
+  {
+    head: 'Relaxed, at the end of a normal exhale',
+    body: 'Do not brace, suck in, or hold a breath. Whatever you do the first time is what you have to do every time.',
+  },
+  {
+    head: 'Snug, not tight',
+    body: 'The tape should sit flat against skin without denting it. Use a flexible non-stretch tape; a stretched cloth tape reads smaller every month as it ages.',
+  },
+  {
+    head: 'Measure twice, keep the median of three',
+    body: 'If two readings differ by more than half a centimetre, take a third and use the middle one. Two readings that agree are worth more than one you were careful about.',
+  },
+  {
+    head: 'Every two to four weeks, not daily',
+    body: 'Day-to-day swing from hydration, sodium, glycogen and gut content is larger than real change. Weekly at most for the tape; the scale can be daily because the trend absorbs the noise.',
+  },
+  {
+    head: 'Same side, same landmarks, same person',
+    body: 'Always the right limb (or always the left). If someone else measures you, the number changes; note it if that happens.',
+  },
 ]
 
 /**
