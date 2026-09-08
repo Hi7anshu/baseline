@@ -25,7 +25,8 @@ export const defaultSettings = () => ({
   apiKey: '',        // Hevy Pro developer key; empty means the CSV path
   lastSync: null,    // ISO timestamp of the last successful API sync
   syncCursor: null,  // page cursor for /v1/workouts/events
-  bodyweightKg: null // fallback for bodyweight-exercise fatigue when Hevy has no measurement
+  bodyweightKg: null,// fallback for bodyweight-exercise fatigue when Hevy has no measurement
+  theme: 'system'    // 'system' | 'light' | 'dark'
 })
 
 export async function loadState() {

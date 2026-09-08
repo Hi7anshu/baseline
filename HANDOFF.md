@@ -32,13 +32,14 @@ Two facts make the no-server design possible. Verify both still hold before assu
 | Area | Status |
 |---|---|
 | Recovery (fatigue + retention, body map, grouped muscles) | Done |
-| Recovery → Fuel lens (intake against training load) | Done — reports, never scores |
+| Recovery → Fuel lens (intake, load, and per-group conditions) | Done — reports, never scores |
 | Training → Volume (sets/muscle, delt heads) | Done |
 | Training → Strength (e1RM per lift, PRs, stalls) | Done |
 | Training → Effort (RPE) | Done, hidden unless rated sets exist |
 | Body (measurements, body fat, FFMI, trend charts, profile) | Done — all nine metrics chart |
 | Fuel (macros, targets, Claude prompt) | Done |
 | Data (CSV import, exercise identification, export **and restore**) | Done |
+| Light / dark / system theme | Done — `lib/theme.js`, chosen under Data → Appearance |
 | Hevy API sync | **Written, never run against a real key** — he has no Pro, see below |
 | Body-weight import | Done — tested against his real file 2026-09-07 |
 
@@ -107,17 +108,25 @@ on; a missing one does not.
 missing features to a future reader:
 
 - Delt heads split **volume only**. openGym models and draws one deltoid; splitting fatigue would
-  mean inventing a decay curve per head.
+  mean inventing a decay curve per head. He reported the missing split in Recovery as a bug —
+  reasonably, since Training has one. The fix was to open Shoulders onto the *volume* split with
+  a note saying the percentage above covers the whole shoulder, not to fabricate three fatigue
+  figures. If this comes back a third time, the answer is still no: `MuscleList`'s `extra` prop
+  exists precisely so a group can explain itself without the numbers being faked.
 - e1RM stops at 12 reps (openGym's cap). High-rep isolation, bodyweight and timed work therefore
   have no curve — 14 of 21 lifts in the fixture. Correct, not broken.
-- Nutrition is **not** wired into recovery scoring, and the third Recovery lens does not change
-  that — it charts intake against working sets, flags protein per kilogram and the gap to
-  estimated burn, and ends with a card stating in as many words that no fatigue number moves.
-  He asked directly whether food was affecting the maps; the answer is no, and the lens exists so
-  the answer is visible in the app rather than only in a conversation. There is no validated
-  function from a day's calories to a percentage of muscle readiness, and openGym's model has no
-  input for one. If you are ever tempted to add a "recovery score" multiplier here, note that
-  nobody downstream could then tell an invented adjustment from a measured one.
+- Nutrition is **not** wired into recovery scoring, and the Fuel lens does not change that.
+  He asked twice: first whether food was affecting the maps (no), then to make the *effect*
+  visible, because a chart of intake next to load did not answer "so what does my protein do to
+  my shoulders". The answer that survives scrutiny is in `conditionsByGroup()` and
+  `consequence()`: attach each muscle group's recent sets to the fed / thin / unlogged state of
+  the days those sets were done on, then state the consequence as **how much to trust the
+  clock** — under ~1.6 g/kg repair is substrate-limited while the model's 36-hour half-life
+  assumes it is not, so "fully ready" becomes the earliest it could be true rather than the day
+  it will be. That is a claim about confidence in a number, which the data supports. A scaled
+  fatigue percentage is not, and nobody downstream could later tell an invented adjustment from
+  a measured one. The banner on the Fatigue lens exists for the same reason: the qualification
+  belongs on the screen being qualified, not one lens away.
 - Body weight change is coloured **neutral**. Down is a win on a cut and a loss on a bulk, and
   Baseline does not know which. Body fat, waist and lean mass do have a better direction.
 
@@ -156,6 +165,14 @@ starting on it did nothing at all).
 to delete on a tap anywhere in the row; a scroll that starts on a row fires it. Both now carry
 an explicit `×`. Do not reintroduce the pattern.
 
+**Theming is token-only.** `styles.css` defines every surface, ink and ramp as a variable on
+`:root`, and `:root[data-theme="light"]` redefines them. A hardcoded hex anywhere else silently
+breaks one theme — the palettes are matched on meaning (`--l0` is always "least of it"), not on
+hue, because the mid-tone greens and ambers that read as calm on `#0d1117` turn to mush on white.
+The vendored `LineChart` reaches for openGym's own names (`--sep-op`, `--yellow`, `--acc`,
+`--surface-2`, `--label-2/3`); those are bridged at the bottom of the stylesheet. Two of them
+were missing until 2026-09-08, which is why chart gridlines never drew.
+
 **Python heredocs eat backslash escapes.** A `\'` inside a JSX string became a syntax error once.
 Prefer the Edit tool for code containing escapes.
 
@@ -175,6 +192,10 @@ directly. No code change needed.
    Cheap, and "did I actually turn up" pairs naturally with the rest.
 2. **`progression.js`** — openGym's next-weight suggestions. Lower value, since he programmes in
    Hevy and would act there, not here.
+
+Also worth knowing: the Fuel lens's group table reads mostly "unlogged" until intake is logged
+on the days he trains. That is correct and deliberate — an unlogged day is never counted as fed —
+but it does mean the panel looks thin until the habit sticks.
 
 Done since the first handoff: per-measurement trend charts (all nine metrics, and switching to an
 empty one no longer unmounts the card), a nutrition-over-time chart as the Recovery → Fuel lens,

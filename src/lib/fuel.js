@@ -10,6 +10,8 @@
 // 700 kcal under maintenance for a week" is a fact. "Your chest is therefore 15% less recovered"
 // is an invention, and an invented number gets acted on exactly like a real one.
 import { isWarmupRow } from '../vendor/lib/workout-model.js'
+import { loadOfWorkouts } from '../vendor/lib/muscles.js'
+import { groupValues, SUM } from './groups.js'
 import { targets, PROTEIN_LOW } from './nutrition.js'
 
 /** Working sets in a session: what was actually completed, warm-ups excluded. */
@@ -161,4 +163,161 @@ export function fuelRead(S, days = 14) {
 function describeGap(diff, burn) {
   if (Math.abs(diff) / burn < 0.08) return 'roughly maintenance'
   return diff < 0 ? `about ${Math.round(-diff)} under` : `about ${Math.round(diff)} over`
+}
+
+/* ------------------------------------------------- conditions per session -- */
+
+// How far under estimated burn counts as a day that was not fed for the work done. Small
+// deficits are how a cut is supposed to look; this is the line past which the shortfall is
+// large enough to be worth naming next to a hard session.
+const DEEP_DEFICIT = 0.15
+
+/**
+ * One day's fuel state: fed, thin, or unknown.
+ *
+ * Protein leads because it is the one with a mechanism you can state plainly — repair runs on
+ * amino acids, and under the floor the substrate is rationed. Energy is second: a deep deficit
+ * slows the same process even when protein is adequate. Anything not logged is `unknown` and is
+ * never quietly counted as fine, which is the failure mode that would make this panel lie by
+ * omission on every day he forgets.
+ *
+ * @returns {{state: 'fed'|'thin'|'unknown', why: 'protein'|'energy'|null}}
+ */
+export function dayState(day, weightKg, goals) {
+  if (!day || (day.protein == null && day.kcal == null)) return { state: 'unknown', why: null }
+
+  const floor = weightKg ? weightKg * PROTEIN_LOW : null
+  if (floor && day.protein != null && day.protein < floor) {
+    return { state: 'thin', why: 'protein' }
+  }
+  if (goals && day.kcal != null && day.kcal < goals.tdee * (1 - DEEP_DEFICIT)) {
+    return { state: 'thin', why: 'energy' }
+  }
+  // With neither a weight nor a profile there is nothing to judge against, and an entry on its
+  // own is not evidence that it was enough.
+  if (!floor && !goals) return { state: 'unknown', why: null }
+  return { state: 'fed', why: null }
+}
+
+/**
+ * The bridge from a plate to a muscle: which groups did their work on days that were fed.
+ *
+ * This is the closest honest answer to "what is my protein intake doing to my shoulders". It
+ * adjusts no fatigue figure. What it does is attach each group's recent sets to the state of
+ * the days those sets were performed on, so "legs took 34 of their 41 sets on days under the
+ * protein floor" is a checkable fact about training and eating, rather than a recovery
+ * percentage that could never be checked at all.
+ *
+ * @param {object} S Application state.
+ * @param {number} days Window.
+ * @returns {{groups: Array, summary: object}}
+ */
+export function conditionsByGroup(S, days = 14) {
+  const weightKg = S.bodyweight?.length ? S.bodyweight[S.bodyweight.length - 1].w : null
+  const goals = targets(S.profile, weightKg)
+  const food = new Map((S.nutrition || []).map(n => [n.d, n]))
+  const cutoff = Date.now() - days * 86400000
+
+  const totals = {}
+  const dayStates = { fed: 0, thin: 0, unknown: 0 }
+  const seenDays = new Set()
+  const thinReasons = new Set()
+
+  for (const w of S.workouts || []) {
+    if ((w.start || new Date(w.d + 'T12:00:00').getTime()) <= cutoff) continue
+
+    const { state, why } = dayState(food.get(w.d), weightKg, goals)
+    if (!seenDays.has(w.d)) {
+      seenDays.add(w.d)
+      dayStates[state]++
+      if (why) thinReasons.add(why)
+    }
+
+    for (const g of groupValues(loadOfWorkouts([w]), SUM)) {
+      if (!(g.value > 0)) continue
+      const row = totals[g.id] || (totals[g.id] = { id: g.id, name: g.name, fed: 0, thin: 0, unknown: 0 })
+      row[state] += g.value
+    }
+  }
+
+  const groups = Object.values(totals)
+    .map(g => {
+      const total = g.fed + g.thin + g.unknown
+      return { ...g, total, verdict: verdictOf(g, total) }
+    })
+    .filter(g => g.total > 0.5)
+    .sort((a, b) => b.total - a.total)
+
+  return {
+    groups,
+    summary: {
+      trainingDays: seenDays.size,
+      ...dayStates,
+      reasons: [...thinReasons],
+      worst: groups.filter(g => g.verdict === 'thin'),
+    },
+  }
+}
+
+// A group is only called thin when most of its work happened on thin days. One under-fed day in
+// a fortnight says nothing about a muscle, and flagging it would teach him to ignore the panel.
+function verdictOf(g, total) {
+  if (!(total > 0)) return 'unknown'
+  if (g.thin / total >= 0.5) return 'thin'
+  if (g.unknown / total > 0.5) return 'unknown'
+  return 'fed'
+}
+
+/**
+ * What being fed or not actually does — expressed as how to read the other two lenses.
+ *
+ * The honest consequence of thin fuel is not a smaller recovery percentage. It is that the
+ * model's clock is optimistic, because a 36-hour half-life assumes repair is not being
+ * rationed. That is a statement about confidence in a number, which this app can support; a
+ * scaled fatigue figure is not.
+ */
+export function consequence(summary) {
+  const { trainingDays, fed, thin, unknown, reasons } = summary
+  if (!trainingDays) return null
+  const d = trainingDays === 1 ? 'day' : 'days'
+
+  if (thin === 0 && unknown === 0) {
+    return {
+      state: 'ok',
+      head: 'Repair had what it needs',
+      body: `All ${trainingDays} training ${d} cleared the protein floor and the burn estimate. `
+        + 'Muscle protein synthesis runs on amino acids and is capped by how much you eat rather than by how hard '
+        + 'you trained, so on these days the fatigue clock is as good as it gets: the recovery it predicts is the '
+        + 'recovery to expect.',
+    }
+  }
+
+  if (thin === 0) {
+    return {
+      state: 'flat',
+      head: 'Partly unaccounted for',
+      body: `${fed} of ${trainingDays} training ${d} cleared both floors; ${unknown} had no intake logged at all. `
+        + 'Nothing here says those went badly — only that they cannot be read either way. Log them and this can say '
+        + 'whether the sessions were fed.',
+    }
+  }
+
+  const why = reasons.includes('protein') && reasons.includes('energy')
+    ? 'protein under the floor on some and a deep energy deficit on others'
+    : reasons.includes('protein')
+      ? 'protein under the floor'
+      : 'a deep energy deficit'
+
+  return {
+    state: 'low',
+    head: 'Read the recovery times as optimistic',
+    body: `${thin} of ${trainingDays} training ${d} had ${why}. Repair is substrate-limited: under roughly `
+      + `${PROTEIN_LOW} g/kg of protein, muscle protein synthesis has less to work with than it can use, and a large `
+      + 'energy deficit pushes the same process further down the queue. The fatigue model does not know this — its '
+      + '36-hour half-life assumes repair is proceeding at full rate. For the groups below, treat "fully ready" as '
+      + 'the earliest it could be true rather than the day it will be.'
+      + (unknown > 0
+        ? ` A further ${unknown} training ${unknown === 1 ? 'day has' : 'days have'} no intake logged and could be either.`
+        : ''),
+  }
 }

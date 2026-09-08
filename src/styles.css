@@ -2,8 +2,13 @@
    decide the next exercise sit at the top and nothing important hides behind a scroll. */
 
 :root {
+  color-scheme: dark;
+
   --bg: #0d1117;
   --card: #161b22;
+  --sunk: #0f141b;       /* inset wells: stats, bars, inputs */
+  --sil: #1b2129;        /* body-map silhouette */
+  --chrome: rgba(13, 17, 23, .85);
   --line: #21262d;
   --ink: #e6edf3;
   --dim: #8b949e;
@@ -21,9 +26,49 @@
   --recovering: #d29922;
   --fatigued: #f85149;
   --accent: #2f81f7;
+  --on-accent: #fff;
+
+  --ok-ink: #7ee787;
+  --err-ink: #ff7b72;
+  --chip-ink: #cfe3ff;
 
   --pad: 16px;
   --radius: 14px;
+}
+
+/* Light.
+   Not the dark palette with the lightness flipped: on white, the mid-tone greens and ambers
+   that read as calm on #0d1117 turn into low-contrast mush, so the state colours are darkened
+   until they pass against a white card, and the heat ramps are rebuilt from the light end. The
+   two themes are matched on meaning — l0 is always "least of it" — not on hue. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f4f6f8;
+  --card: #ffffff;
+  --sunk: #eef1f5;
+  --sil: #e4e8ee;
+  --chrome: rgba(244, 246, 248, .85);
+  --line: #dce1e8;
+  --ink: #11151b;
+  --dim: #545c66;
+  --faint: #79818c;
+
+  --l0: #e4e8ee;
+  --l1: #f2d9ae;
+  --l2: #e0a32e;
+  --l3: #c67c17;
+  --l4: #a85a0c;
+
+  --ready: #1a7f37;
+  --recovering: #8a6100;
+  --fatigued: #c4232e;
+  --accent: #0a66d6;
+  --on-accent: #fff;
+
+  --ok-ink: #116329;
+  --err-ink: #a40e26;
+  --chip-ink: #084ea3;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -57,7 +102,7 @@ body {
   position: sticky; top: 0; z-index: 5;
   display: flex; align-items: baseline; gap: 10px;
   padding: calc(env(safe-area-inset-top) + 14px) var(--pad) 12px;
-  background: rgba(13, 17, 23, .85);
+  background: var(--chrome);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--line);
 }
@@ -83,7 +128,7 @@ body {
   /* Opaque rather than blurred. Nothing scrolls under the tab bar — it sits outside the
      scroller — so the blur bought nothing and cost a composited layer repainted every frame,
      which is most of what made scrolling feel like it was catching. */
-  background: #0d1117;
+  background: var(--bg);
   padding-bottom: env(safe-area-inset-bottom);
 }
 .tab {
@@ -116,7 +161,7 @@ body {
 .verdict { display: flex; gap: 8px; margin-bottom: 16px; }
 .v-col {
   flex: 1; display: grid; gap: 3px; justify-items: center;
-  padding: 12px 4px; background: #0f141b; border-radius: 10px;
+  padding: 12px 4px; background: var(--sunk); border-radius: 10px;
 }
 .v-n { font-size: 24px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 .v-n small { font-size: 14px; color: var(--faint); font-weight: 500; }
@@ -130,7 +175,7 @@ body {
 .bodymap { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .bm-v { width: 100%; height: auto; display: block; }
 .bm-ph { grid-column: 1 / -1; height: 260px; }
-.bm-sil { fill: #1b2129; }
+.bm-sil { fill: var(--sil); }
 
 /* Each map carries its own ramp, because "more colour" does not mean the same thing on all
    three. Fatigue and retention are judgements — green is good, red is not — so they run a
@@ -143,6 +188,12 @@ body {
 .bodymap.heat-volume {
   --h0: #262c36; --h1: #1f3f66; --h2: #2f6fbf; --h3: #4a9eff; --h4: #9ed0ff;
 }
+:root[data-theme="light"] .bodymap.heat-fatigue {
+  --h0: #57b96c; --h1: #a8c93a; --h2: #e0a72b; --h3: #e2743a; --h4: #d64840;
+}
+:root[data-theme="light"] .bodymap.heat-volume {
+  --h0: #e4e8ee; --h1: #bcd6f5; --h2: #7fb0ec; --h3: #3d84dd; --h4: #0a5fc0;
+}
 
 .bm-m { fill: var(--h0, var(--l0)); transition: fill .25s ease; cursor: pointer; }
 .bm-m.l1 { fill: var(--h1, var(--l1)); }
@@ -153,11 +204,13 @@ body {
 
 /* Legend swatches, matching the fatigue ramp above. */
 .sw { width: 15px; height: 9px; border-radius: 2px; }
-.sw.f0 { background: #2ea043; }
-.sw.f1 { background: #7fb800; }
-.sw.f2 { background: #d29922; }
-.sw.f3 { background: #ef6c2e; }
-.sw.f4 { background: #f85149; }
+.scale { --h0: #2ea043; --h1: #7fb800; --h2: #d29922; --h3: #ef6c2e; --h4: #f85149; }
+:root[data-theme="light"] .scale { --h0: #57b96c; --h1: #a8c93a; --h2: #e0a72b; --h3: #e2743a; --h4: #d64840; }
+.sw.f0 { background: var(--h0); }
+.sw.f1 { background: var(--h1); }
+.sw.f2 { background: var(--h2); }
+.sw.f3 { background: var(--h3); }
+.sw.f4 { background: var(--h4); }
 
 .scale, .hm-legend {
   display: flex; align-items: center; justify-content: center; gap: 4px;
@@ -176,9 +229,9 @@ body {
   display: grid; grid-template-columns: 5.7rem 1fr auto; align-items: center; gap: 10px;
   padding: 9px 8px; margin: 0 -8px; border-radius: 8px; cursor: pointer;
 }
-.row.on { background: #0f141b; }
+.row.on { background: var(--sunk); }
 .r-name { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bar { height: 6px; background: #0f141b; border-radius: 3px; overflow: hidden; }
+.bar { height: 6px; background: var(--sunk); border-radius: 3px; overflow: hidden; }
 .fill { display: block; height: 100%; border-radius: 3px; background: var(--l3); transition: width .3s ease; }
 .fill.ready { background: var(--ready); }
 .fill.recovering { background: var(--recovering); }
@@ -207,14 +260,14 @@ body {
 .pill.fatigued { background: rgba(248, 81, 73, .15); color: var(--fatigued); }
 
 .d-grid { display: flex; gap: 8px; }
-.d-grid > div { flex: 1; display: grid; gap: 3px; padding: 10px; background: #0f141b; border-radius: 10px; }
+.d-grid > div { flex: 1; display: grid; gap: 3px; padding: 10px; background: var(--sunk); border-radius: 10px; }
 .d-grid .k { font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .04em; }
 .d-grid .v { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .d-last { margin: 12px 0 0; font-size: 13px; color: var(--dim); }
 
 /* --------------------------------------------------------------- controls -- */
 
-.seg { display: flex; gap: 4px; background: #0f141b; padding: 3px; border-radius: 10px; margin-bottom: 16px; }
+.seg { display: flex; gap: 4px; background: var(--sunk); padding: 3px; border-radius: 10px; margin-bottom: 16px; }
 .seg-b {
   flex: 1; appearance: none; border: 0; background: none; color: var(--dim);
   padding: 7px 0; border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer;
@@ -223,17 +276,17 @@ body {
 
 .btn {
   appearance: none; width: 100%; padding: 12px 16px; border-radius: 10px;
-  border: 1px solid var(--line); background: #0f141b; color: var(--ink);
+  border: 1px solid var(--line); background: var(--sunk); color: var(--ink);
   font: inherit; font-size: 14px; font-weight: 550; cursor: pointer;
 }
 .btn:disabled { opacity: .5; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn.danger { color: var(--fatigued); }
 .btn-row { display: flex; gap: 8px; }
 
 .input {
   width: 100%; padding: 12px 14px; margin-bottom: 10px;
-  background: #0f141b; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--sunk); border: 1px solid var(--line); border-radius: 10px;
   color: var(--ink); font: inherit; font-size: 15px;
 }
 .input:focus { outline: none; border-color: var(--accent); }
@@ -247,14 +300,14 @@ body {
 }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { font-size: 12.5px; padding: 5px 10px; border-radius: 999px; background: #0f141b; color: var(--dim); }
+.chip { font-size: 12.5px; padding: 5px 10px; border-radius: 999px; background: var(--sunk); color: var(--dim); }
 
 /* ------------------------------------------------------------------ notes -- */
 
 .note { padding: 13px 15px; border-radius: 10px; font-size: 13.5px; border: 1px solid var(--line); }
-.note.busy { background: #0f141b; color: var(--dim); }
-.note.ok { background: rgba(63, 185, 80, .1); border-color: rgba(63, 185, 80, .3); color: #7ee787; }
-.note.err { background: rgba(248, 81, 73, .1); border-color: rgba(248, 81, 73, .3); color: #ff7b72; }
+.note.busy { background: var(--sunk); color: var(--dim); }
+.note.ok { background: rgba(63, 185, 80, .1); border-color: rgba(63, 185, 80, .3); color: var(--ok-ink); }
+.note.err { background: rgba(248, 81, 73, .1); border-color: rgba(248, 81, 73, .3); color: var(--err-ink); }
 .note summary { cursor: pointer; margin-top: 8px; color: var(--dim); }
 .unmatched { margin: 8px 0 0; padding-left: 18px; color: var(--faint); font-size: 12.5px; }
 
@@ -285,14 +338,14 @@ body {
   color: var(--ink); font: inherit; cursor: pointer;
   padding: 9px 10px; margin: 0 -10px; border-radius: 8px; display: grid; gap: 2px;
 }
-.pick:hover, .pick:active { background: #0f141b; }
+.pick:hover, .pick:active { background: var(--sunk); }
 .pick-n { font-size: 13.5px; }
 .pick-m { font-size: 11.5px; color: var(--faint); }
 
 .chips.pickable .chip {
   appearance: none; border: 1px solid var(--line); font: inherit; cursor: pointer;
 }
-.chips.pickable .chip.primary { background: rgba(47, 129, 247, .18); border-color: var(--accent); color: #cfe3ff; }
+.chips.pickable .chip.primary { background: rgba(47, 129, 247, .18); border-color: var(--accent); color: var(--chip-ink); }
 .chips.pickable .chip.secondary { background: rgba(47, 129, 247, .08); border-color: rgba(47, 129, 247, .4); color: var(--ink); }
 .chips.pickable + .btn { margin-top: 12px; }
 
@@ -326,7 +379,7 @@ select.input { appearance: none; }
 
 .stat-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 .stat-grid.macros { grid-template-columns: 1fr 1fr; }
-.stat { display: grid; gap: 3px; padding: 11px 10px; background: #0f141b; border-radius: 10px; }
+.stat { display: grid; gap: 3px; padding: 11px 10px; background: var(--sunk); border-radius: 10px; }
 .stat-l { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: .04em; }
 .stat-l .est { margin-left: 3px; opacity: .8; }
 .stat-v { font-size: 19px; font-weight: 620; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
@@ -350,7 +403,7 @@ select.input { appearance: none; }
 .reads { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .reads li {
   font-size: 13.5px; line-height: 1.55; color: var(--dim);
-  padding: 11px 13px; border-radius: 10px; background: #0f141b;
+  padding: 11px 13px; border-radius: 10px; background: var(--sunk);
   border-left: 3px solid var(--line);
 }
 .reads li strong { color: var(--ink); font-weight: 600; }
@@ -365,9 +418,13 @@ select.input { appearance: none; }
    that file a verbatim copy rather than forking it over four colours. */
 :root {
   --acc: var(--accent);
-  --surface-2: #0f141b;
+  --surface-2: var(--sunk);
   --label-2: var(--dim);
   --label-3: var(--faint);
+  /* Both of these were missing: `stroke="var(--sep-op)"` with nothing behind it is an invalid
+     paint, which is why the chart gridlines never appeared. */
+  --sep-op: var(--line);
+  --yellow: var(--recovering);
 }
 
 .chart { width: 100%; overflow: hidden; }
@@ -385,7 +442,7 @@ select.input { appearance: none; }
 /* -------------------------------------------------------------- prompt -- */
 
 .prompt {
-  margin: 0; padding: 13px 14px; background: #0f141b; border: 1px solid var(--line);
+  margin: 0; padding: 13px 14px; background: var(--sunk); border: 1px solid var(--line);
   border-radius: 10px; color: var(--dim); font-size: 12.5px; line-height: 1.6;
   white-space: pre-wrap; word-break: break-word; overflow-x: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -434,7 +491,7 @@ select.input { appearance: none; }
   font-size: 19px; line-height: 1; padding: 4px 6px; margin: 0 -4px;
   border-radius: 8px; cursor: pointer;
 }
-.row.static .x:hover, .row.static .x:active { background: #0f141b; color: var(--fatigued); }
+.row.static .x:hover, .row.static .x:active { background: var(--sunk); color: var(--fatigued); }
 .day-row, .row.day-row { grid-template-columns: 1fr auto auto; }
 
 /* Segmented control with more than four options — measurement trends run to nine. */
@@ -461,3 +518,55 @@ select.input { appearance: none; }
 /* The estimate marker, wherever a projected number is printed as if it were a measured one. */
 .lift-v .est { color: var(--faint); font-weight: 500; margin-right: 1px; }
 .d-grid .v small { white-space: nowrap; }
+
+
+/* ------------------------------------------------------------- callouts -- */
+
+/* The one place a conclusion is stated rather than a number shown, so it is allowed to be the
+   loudest thing on the card. */
+.callout {
+  padding: 14px 15px; border-radius: 12px; background: var(--sunk);
+  border-left: 3px solid var(--line);
+}
+.callout strong { display: block; font-size: 14.5px; margin-bottom: 6px; }
+.callout p { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--dim); }
+.callout.ok { border-left-color: var(--ready); }
+.callout.low { border-left-color: var(--fatigued); }
+.callout.flat { border-left-color: var(--recovering); }
+
+/* A banner is a callout that navigates: it qualifies the screen it sits on and hands you the
+   evidence for the qualification. */
+.banner {
+  appearance: none; width: 100%; text-align: left; font: inherit; cursor: pointer;
+  display: grid; gap: 3px; padding: 12px 14px; border-radius: 12px;
+  background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--recovering);
+  color: var(--ink);
+}
+.banner.low { border-left-color: var(--fatigued); }
+.bn-h { font-size: 14px; font-weight: 600; }
+.bn-b { font-size: 12.5px; color: var(--dim); line-height: 1.5; }
+
+.sub-h {
+  margin: 18px 0 8px; font-size: 12px; font-weight: 600; color: var(--dim);
+  text-transform: uppercase; letter-spacing: .05em;
+}
+
+/* Three-part bar: fed, under-fuelled, unlogged, in that order left to right. */
+.bar.split { display: flex; gap: 0; }
+.bar.split .fill { border-radius: 0; }
+.bar.split .fill:first-child { border-radius: 3px 0 0 3px; }
+.bar.split .fill:last-child { border-radius: 0 3px 3px 0; }
+.fill.fed { background: var(--ready); }
+.fill.thin { background: var(--fatigued); }
+.fill.unknown { background: var(--line); }
+.cond-row .r-eta.fed { color: var(--ready); }
+.cond-row .r-eta.thin { color: var(--fatigued); }
+.cond-row .r-eta.unknown { color: var(--faint); }
+.fc-key .k-fed { background: var(--ready); height: 9px; width: 9px; border-radius: 2px; }
+.fc-key .k-thin { background: var(--fatigued); height: 9px; width: 9px; border-radius: 2px; }
+.fc-key .k-unknown { background: var(--line); height: 9px; width: 9px; border-radius: 2px; }
+
+/* The delt breakdown hanging under an opened Shoulders row. */
+.sub-extra { padding: 2px 0 10px 16px; }
+.delt-split .sub-row { padding: 6px 8px; }
+.delt-split .foot { margin-top: 8px; }

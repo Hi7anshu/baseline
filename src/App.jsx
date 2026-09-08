@@ -3,6 +3,7 @@ import { fatigueOf, strengthOf } from './vendor/lib/recovery.js'
 import { registerCustom } from './vendor/lib/exercises.js'
 import { loadState, saveState, loadSettings, saveSettings, emptyState } from './lib/store.js'
 import { reresolveCustoms } from './lib/match.js'
+import { applyTheme, watchSystem } from './lib/theme.js'
 import Recovery from './views/Recovery.jsx'
 import Training from './views/Training.jsx'
 import Body from './views/Body.jsx'
@@ -43,6 +44,14 @@ export default function App() {
       setReady(true)
     })
   }, [])
+
+  // Theme follows the saved preference, and — while that preference is "system" — keeps
+  // following the phone as it flips at dusk rather than only at launch.
+  useEffect(() => {
+    if (!settings) return
+    applyTheme(settings.theme)
+    return watchSystem(() => applyTheme(settings.theme))
+  }, [settings?.theme])
 
   // Fatigue moves while the app sits open on the gym floor. A minute is finer than the readout.
   useEffect(() => {

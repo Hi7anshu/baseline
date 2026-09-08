@@ -3,6 +3,7 @@ import { parseImport, parseBodyweight, mergeImport } from '../vendor/lib/import-
 import { remapParsed, reresolveCustoms } from '../lib/match.js'
 import { sync, fetchUser, HevyError } from '../lib/hevy.js'
 import { exportJSON, parseBackup, emptyState } from '../lib/store.js'
+import { THEMES, resolveTheme } from '../lib/theme.js'
 import Unidentified from './Unidentified.jsx'
 
 /**
@@ -260,6 +261,25 @@ export default function Data({ S, settings, commitState, commitSettings }) {
         <div className="btn-row" style={{ marginTop: 10 }}>
           <button className="btn danger" onClick={onClear}>Clear local copy</button>
         </div>
+      </section>
+
+      <section className="card">
+        <h2 className="c-h">Appearance</h2>
+        <div className="seg">
+          {THEMES.map(t => (
+            <button
+              key={t.id}
+              className={'seg-b' + ((settings.theme || 'system') === t.id ? ' on' : '')}
+              onClick={() => commitSettings({ ...settings, theme: t.id })}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <p className="foot">
+          System follows the phone, including when it changes on a schedule — currently{' '}
+          {resolveTheme(settings.theme)}. The setting lives on this device with everything else.
+        </p>
       </section>
 
       <section className="card">

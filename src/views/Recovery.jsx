@@ -7,7 +7,8 @@ import { STRENGTH_FLOOR } from '../vendor/lib/recovery.js'
 import { groupValues, MAX, MIN } from '../lib/groups.js'
 import { recoveryRows, fmtEta, STATE_LABEL, FATIGUE_THRESHOLDS } from '../lib/eta.js'
 import { fatigueStateOf } from '../vendor/lib/recovery-view.js'
-import { fuelRead } from '../lib/fuel.js'
+import { fuelRead, conditionsByGroup, consequence } from '../lib/fuel.js'
+import { deltVolume, HEADS } from '../lib/delts.js'
 import { targets, PROTEIN_LOW } from '../lib/nutrition.js'
 import FuelChart from '../components/FuelChart.jsx'
 
@@ -41,7 +42,7 @@ export default function Recovery({ S, now, fatigue, strength }) {
           </button>
         ))}
       </div>
-      {lens === 'fatigue' && <Fatigue S={S} now={now} fatigue={fatigue} selected={selected} setSelected={setSelected} />}
+      {lens === 'fatigue' && <Fatigue S={S} now={now} fatigue={fatigue} selected={selected} setSelected={setSelected} onFuel={() => setLens('fuel')} />}
       {lens === 'retention' && <Retention strength={strength} selected={selected} setSelected={setSelected} />}
       {lens === 'fuel' && <FuelLens S={S} />}
     </>
@@ -50,7 +51,7 @@ export default function Recovery({ S, now, fatigue, strength }) {
 
 /* ---------------------------------------------------------------- fatigue -- */
 
-function Fatigue({ S, now, fatigue, selected, setSelected }) {
+function Fatigue({ S, now, fatigue, selected, setSelected, onFuel }) {
   const rows = useMemo(() => recoveryRows(fatigue), [fatigue])
   const byState = useMemo(() => {
     const counts = { ready: 0, recovering: 0, fatigued: 0 }
@@ -75,8 +76,33 @@ function Fatigue({ S, now, fatigue, selected, setSelected }) {
     return null
   }, [selected, S.workouts])
 
+  // Shoulders is the one group openGym cannot break down, so its volume split stands in — see
+  // the note rendered with it.
+  const deltDays = 14
+  const delts = useMemo(() => {
+    const cutoff = Date.now() - deltDays * 86400000
+    return deltVolume(S.workouts.filter(w => (w.start || new Date(w.d).getTime()) > cutoff))
+  }, [S.workouts])
+
+  // Fuel qualifies these numbers, so the qualification belongs on this screen rather than one
+  // lens away where it would only be read by someone already looking for it.
+  const fuel = useMemo(() => conditionsByGroup(S, deltDays), [S])
+  const note = useMemo(() => consequence(fuel.summary), [fuel])
+
   return (
     <>
+      {note && note.state !== 'ok' && (
+        <button className={'banner ' + note.state} onClick={onFuel}>
+          <span className="bn-h">{note.head}</span>
+          <span className="bn-b">
+            {fuel.summary.thin > 0
+              ? `${fuel.summary.thin} of ${fuel.summary.trainingDays} training days in the last ${deltDays} were under-fuelled.`
+              : `${fuel.summary.unknown} of ${fuel.summary.trainingDays} training days have no intake logged.`}
+            {' '}Open Fuel ›
+          </span>
+        </button>
+      )}
+
       <section className="card">
         <div className="verdict">
           <div className="v-col"><span className="v-n">{byState.ready}</span><span className="v-l ready">ready</span></div>
@@ -129,6 +155,7 @@ function Fatigue({ S, now, fatigue, selected, setSelected }) {
           stateOf={v => fatigueStateOf(v)}
           onSelect={slug => setSelected(s => (s === slug ? null : slug))}
           selected={selected}
+          extra={{ shoulders: <DeltSplit delts={delts} days={deltDays} /> }}
         />
         <p className="foot">
           A group shows its most fatigued muscle, since that is what limits the session. Tap to
@@ -213,6 +240,46 @@ function Retention({ strength, selected, setSelected }) {
   )
 }
 
+/* ------------------------------------------------------------ delt split -- */
+
+/**
+ * What the shoulder fatigue figure is made of.
+ *
+ * Training splits the delts into three heads and Recovery does not, which reads as an
+ * inconsistency and is really a modelling limit: openGym draws and decays one `deltoids`, so
+ * there is exactly one fatigue number for the whole shoulder and no honest way to divide it —
+ * the three heads would need a measured decay curve each, and nobody has measured them.
+ *
+ * What can be shown is the same volume split Training uses, in the same place, so opening
+ * Shoulders answers the question actually being asked — "which part of my shoulder is that
+ * fatigue coming from?" — with set counts, which are observed, instead of with a percentage
+ * that would have to be invented.
+ */
+function DeltSplit({ delts, days }) {
+  const max = Math.max(delts.front, delts.side, delts.rear, 1)
+  return (
+    <div className="delt-split">
+      {HEADS.map(head => (
+        <div key={head.id} className="row sub-row static">
+          <span className="r-name">{head.name}</span>
+          <span className="bar">
+            <i className="fill vol" style={{ width: `${Math.max(2, (delts[head.id] / max) * 100)}%` }} />
+          </span>
+          <span className="r-eta">{round1(delts[head.id])}</span>
+        </div>
+      ))}
+      <p className="foot">
+        Effective sets over {days} days, not fatigue. openGym models one deltoid and decays it as
+        one, so the percentage above covers the whole shoulder; this is where that work went.
+        Heads are read from exercise names
+        {delts.unclassified > 0.05 && `, and ${round1(delts.unclassified)} sets whose name did not say were split evenly`}.
+      </p>
+    </div>
+  )
+}
+
+const round1 = v => Math.round(v * 10) / 10
+
 /* ------------------------------------------------------------------- fuel -- */
 
 /**
@@ -228,6 +295,8 @@ function FuelLens({ S }) {
   const [metric, setMetric] = useState('protein')
 
   const { coverage, readings, rows } = useMemo(() => fuelRead(S, days), [S, days])
+  const cond = useMemo(() => conditionsByGroup(S, days), [S, days])
+  const note = useMemo(() => consequence(cond.summary), [cond])
 
   const weightKg = S.bodyweight?.length ? S.bodyweight[S.bodyweight.length - 1].w : null
   const goals = useMemo(() => targets(S.profile, weightKg), [S.profile, weightKg])
@@ -282,6 +351,50 @@ function FuelLens({ S }) {
       </section>
 
       <section className="card">
+        <h2 className="c-h">What this does to recovery</h2>
+        {note ? (
+          <>
+            <div className={'callout ' + note.state}>
+              <strong>{note.head}</strong>
+              <p>{note.body}</p>
+            </div>
+
+            {cond.groups.length > 0 && (
+              <>
+                <h3 className="sub-h">The work those days carried</h3>
+                <ul className="rows grouped cond">
+                  {cond.groups.map(g => (
+                    <li key={g.id} className="row static cond-row">
+                      <span className="r-name">{g.name}</span>
+                      <span className="bar split" title={`${round1(g.fed)} fed, ${round1(g.thin)} under-fuelled, ${round1(g.unknown)} unlogged`}>
+                        <i className="fill fed" style={{ width: pct(g.fed, g.total) }} />
+                        <i className="fill thin" style={{ width: pct(g.thin, g.total) }} />
+                        <i className="fill unknown" style={{ width: pct(g.unknown, g.total) }} />
+                      </span>
+                      <span className={'r-eta ' + g.verdict}>{LABEL[g.verdict]}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="fc-key">
+                  <span><i className="k-fed" /> Fed</span>
+                  <span><i className="k-thin" /> Under-fuelled</span>
+                  <span><i className="k-unknown" /> Not logged</span>
+                </div>
+                <p className="foot">
+                  Each bar is that group's effective sets over {days} days, split by the state of
+                  the day they were done on. A group is called under-fuelled only when most of its
+                  work landed on days under the protein floor or well under the burn estimate —
+                  one thin day in a fortnight says nothing about a muscle.
+                </p>
+              </>
+            )}
+          </>
+        ) : (
+          <p className="p">Nothing trained in this window, so there is nothing for intake to have supported.</p>
+        )}
+      </section>
+
+      <section className="card">
         <h2 className="c-h">Reading</h2>
         <ul className="reads">
           {readings.map((r, i) => <li key={i} className={r.state}>{r.text}</li>)}
@@ -289,24 +402,22 @@ function FuelLens({ S }) {
       </section>
 
       <section className="card">
-        <h2 className="c-h">What this does not do</h2>
-        <p className="p">
-          None of this changes a single fatigue or retention number. Protein and energy really do
-          gate repair, but there is no honest function from a day's calories to a percentage of
-          muscle readiness, and openGym's model has no input for one — it reads sets, load and
-          time, nothing else.
-        </p>
+        <h2 className="c-h">Why there is no fuel-adjusted score</h2>
         <p className="foot">
-          So this lens describes the conditions and stops. Eating far under maintenance through a
-          hard block is the situation in which the fatigue map is most likely to be optimistic —
-          worth knowing when you decide to push or back off, and not something to be turned into
-          a number here. If a fuel figure ever moved the map, you would have no way to tell an
-          invented adjustment from a measured one.
+          Nothing on this page changes a fatigue or retention percentage. Protein and energy
+          really do gate repair, which is why the effect is stated as how much to trust the
+          clock — there is no measured function from a day's calories to a percentage of muscle
+          readiness, and openGym's model has no input for one: it reads sets, load and time.
+          A number invented to fill that gap would be indistinguishable, later, from a measured
+          one.
         </p>
       </section>
     </>
   )
 }
+
+const LABEL = { fed: 'fed', thin: 'thin', unknown: 'unlogged' }
+const pct = (v, total) => `${total > 0 ? (v / total) * 100 : 0}%`
 
 function relDay(iso, now) {
   const days = Math.floor((now - new Date(iso + 'T12:00:00').getTime()) / 86400000)
