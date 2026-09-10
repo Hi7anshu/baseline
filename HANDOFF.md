@@ -161,10 +161,18 @@ node tools/check-pipeline.mjs tools/hevy-fixture.csv # CSV -> state -> fatigue -
 node tools/check-strength.mjs tools/hevy-fixture.csv # e1RM progress; expect 14 of 21 lifts
 node tools/find-exercise.mjs "face+pull" "hip+thrust" # search the catalogue when adding aliases
 node tools/check-backup.mjs                          # export -> restore round trip
+node tools/check-sanity.mjs                          # no name resolves to the wrong body part
 ```
 
 `check-matching.mjs` reporting anything below 61/62 is a regression. The single expected miss is
 `Rowing Machine`, which genuinely has no catalogue equivalent.
+
+`check-sanity.mjs` is the one that must exit 0. It asks a different question from the others:
+not *did this resolve* but *did it resolve to something absurd* — a chest machine landing on
+legs, a lift landing on a yoga pose. That failure is silent, which is why it gets its own sweep.
+It was written after `Butterfly (Pec Deck)` imported as `butterfly yoga pose` and loaded his
+adductors. **A wrong match is worse than no match**: an unresolved name shows up in Unidentified
+and gets fixed, a wrong one just quietly moves the numbers.
 
 ---
 

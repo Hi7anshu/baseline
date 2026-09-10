@@ -140,9 +140,33 @@ const HEVY_ALIAS = {
 
   'chest fly|dumbbell': '0308',         // dumbbell fly
   'chest fly|cable': '1269',            // cable crossover
-  'chest fly|machine': '0602',          // nearest seated lever fly
+  'chest fly|machine': '0596',          // lever seated fly — the pec deck, not its reverse
   'cable fly crossover': '1269',
   'cable fly': '1269',
+  'machine fly': '0596',
+  'pec fly|machine': '0596',
+
+  // The pec deck. Hevy writes it "Butterfly (Pec Deck)" and the catalogue has no "pec deck"
+  // string anywhere, so no generic rule can reach it. Left to those rules, "butterfly" alone
+  // is one word short of "butterfly yoga pose" — adductors — which files a chest machine
+  // under legs. Named here; the same class of miss is blocked by looksWrong() below.
+  butterfly: '0596',
+  'butterfly|pec deck': '0596',
+  'butterfly|machine': '0596',
+  'pec deck': '0596',
+  'pec deck|machine': '0596',
+  'pec deck fly': '0596',
+  'pec deck fly|machine': '0596',
+  'reverse pec deck': '0602',           // lever seated reverse fly — rear delts, not chest
+  'reverse pec deck|machine': '0602',
+  'pec deck reverse fly': '0602',
+  'rear delt fly|machine': '0602',
+
+  // The catalogue has no "bulgarian"; it calls the same movement a one-leg split squat.
+  'bulgarian split squat|dumbbell': '0410',
+  'bulgarian split squat|barbell': '0099',
+  'bulgarian split squat|smith': '0768',
+  'bulgarian split squat': '0410',
 
   'hack squat|machine': '0743',         // sled hack squat
   'hack squat|barbell': '0046',
@@ -202,6 +226,56 @@ const HEVY_ALIAS = {
 const aliasHit = (base, qualifier) =>
   HEVY_ALIAS[`${base}|${qualifier}`] || HEVY_ALIAS[base] || null
 
+/* ------------------------------------------------------------ sanity guard -- */
+
+// Two ways a match can be confidently wrong rather than merely imperfect, and both produce a
+// silently wrong fatigue reading — the one failure mode this file exists to avoid.
+
+// The catalogue carries 59 stretches, yoga poses and mobility drills alongside the lifts, and
+// their names collide with gym vocabulary: butterfly, cobra, bridge, pigeon, windmill. Nobody
+// logging sets in Hevy means the yoga one, and these entries are all body-weight, so they also
+// tend to sit in a different body part entirely. Reached only when the logged name says so.
+const PASSIVE = /\b(yoga|pose|stretch|stretches|mobility|foam\s*roll)\b/
+
+// Word-overlap matching also accepts a catalogue entry that contains every word of the query
+// plus up to two of its own, which on a short query is most of the entry. "butterfly" reaching
+// "butterfly yoga pose" is that: one word supplied, two invented.
+//
+// The dataset names movements as "equipment qualifiers MOVEMENT" — the movement is the last
+// word, every time. A spelling that does not contain that word is not naming that exercise, it
+// merely shares a modifier with it. Checking the head word is what makes this general: it costs
+// nothing on the names that already resolve, and it catches the whole class rather than one
+// exercise. Applied to our rewrites only — the name exactly as typed is upstream's call, and
+// only the PASSIVE check overrides that.
+const bag = s => new Set(String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean))
+
+// "cable triceps pushdown (v-bar)" -> "pushdown". Parentheticals are grip and equipment notes,
+// never the movement, so they come off first.
+const headWord = exName => {
+  const words = String(exName || '').toLowerCase().replace(/\([^)]*\)/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean)
+  return words[words.length - 1] || ''
+}
+
+const names = word => [word, word.replace(/s$/, ''), `${word}s`]
+
+/**
+ * Should this hit be thrown away rather than trusted?
+ *
+ * @param {string} query      The spelling that produced the hit.
+ * @param {string} id         Catalogue id the matcher returned.
+ * @param {boolean} rewritten True when `query` is our rewrite rather than the user's own words.
+ */
+function looksWrong(query, id, rewritten) {
+  const ex = EXIDX[id]
+  if (!ex) return true
+  if (PASSIVE.test(ex.n) && !PASSIVE.test(String(query).toLowerCase())) return true
+  if (!rewritten) return false
+  const q = bag(query)
+  const head = headWord(ex.n)
+  return Boolean(head) && !names(head).some(w => q.has(w))
+}
+
 /** Key an exercise name is remembered under, so "Ab Wheel" and "ab  wheel" are one entry. */
 export const overrideKey = name => tidy(name)
 
@@ -228,7 +302,7 @@ export function resolveName(name, overrides) {
   // The name exactly as written, first and on its own — upstream's matcher is the authority
   // and must never be second-guessed by a rewrite that happens to also match.
   const direct = matchExercise(name)
-  if (direct) return direct
+  if (direct && !looksWrong(name, direct, false)) return direct
 
   const { qualifier } = parts(name)
 
@@ -236,7 +310,7 @@ export function resolveName(name, overrides) {
     const alias = aliasHit(candidate, qualifier) || aliasHit(candidate, '')
     if (alias && EXIDX[alias]) return alias
     const hit = matchExercise(candidate)
-    if (hit) return hit
+    if (hit && !looksWrong(candidate, hit, true)) return hit
   }
 
   return null
