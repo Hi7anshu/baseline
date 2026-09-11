@@ -220,6 +220,31 @@ export default function Data({ S, settings, fatigue, commitState, commitSettings
     }
   }
 
+  /**
+   * Throw away the cached app and load the deployed one.
+   *
+   * Installed as a PWA, the service worker serves the build it already has and only picks up a
+   * new one on its own schedule — so a fix can be live and the phone still running last week's
+   * code. That looks exactly like the fix not working, and the difference is invisible without
+   * this. Only the app shell is cached; training lives in IndexedDB and is not touched.
+   */
+  async function onUpdate() {
+    setBusy('Fetching the latest version…'); setErr(null); setMsg(null)
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations()
+        await Promise.all(regs.map(r => r.unregister()))
+      }
+      if (window.caches) {
+        const keys = await caches.keys()
+        await Promise.all(keys.map(k => caches.delete(k)))
+      }
+      location.reload()
+    } catch (ex) {
+      failed(ex.message || 'Could not fetch an update. Close the app fully and reopen it.')
+    }
+  }
+
   async function onClear() {
     if (!confirm('Clear the local copy? Your Hevy account is untouched — re-import or re-sync brings it all back.')) return
     await commitState(emptyState())
@@ -377,6 +402,13 @@ export default function Data({ S, settings, fatigue, commitState, commitSettings
           Everything lives in this browser and on Hevy's servers. Nothing is uploaded anywhere else
           and no server holds a copy, so there is nothing to keep running.
         </p>
+        <p className="foot">
+          App version <strong>{__BUILD__}</strong>. Installed to the home screen, this can sit a
+          version or two behind what is deployed, which looks the same as a fix not working. If
+          something was meant to be corrected and has not been, update first and import again —
+          an import is matched by whichever version is loaded at the time.
+        </p>
+        <button className="btn small" disabled={!!busy} onClick={onUpdate}>Update the app</button>
         <input ref={backupFile} type="file" accept=".json,application/json" onChange={onBackupFile} hidden />
         <div className="btn-row">
           <button className="btn" onClick={() => exportJSON(S, settings)}>Export backup</button>

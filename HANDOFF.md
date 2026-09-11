@@ -178,6 +178,13 @@ in it and everything gets re-matched. **That is one `filter` in `Data.jsx` and d
 silently strand every future fix** — upstream's `mergeImport` on its own lets the existing day
 win. `check-reimport.mjs` exists to catch exactly that.
 
+**The import is matched by whichever build is loaded at the time**, so on a phone the order is:
+update the app, confirm the version on the Data screen, *then* import. Installed as a PWA the
+service worker serves the build it already holds, and a re-import under the old one just writes
+the old answer back — which looks exactly like the fix not working. **Data → Your data → Update
+the app** unregisters the worker, drops the caches and reloads; training is in IndexedDB and is
+not touched. The version stamp next to it comes from `__BUILD__` in `vite.config.js`.
+
 On the API, **Data → Automatic sync → Re-read everything** does the same job: it asks for the
 full history rather than the changes since last sync. Merging is by Hevy id, so each workout is
 replaced rather than duplicated. Neither route touches measurements, nutrition or sleep.

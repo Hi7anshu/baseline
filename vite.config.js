@@ -1,6 +1,21 @@
+import { execSync } from 'node:child_process'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+
+// Stamped into the build and shown on the Data screen. Installed as a PWA, the app can keep
+// running an older service worker for a while after a deploy, and with nothing on screen saying
+// which build is loaded there is no way to tell that apart from a fix not working — which cost
+// a round trip once already.
+const buildStamp = () => {
+  try {
+    const sha = execSync('git rev-parse --short HEAD').toString().trim()
+    const when = execSync('git log -1 --format=%cs').toString().trim()
+    return `${when} · ${sha}`
+  } catch {
+    return 'dev'
+  }
+}
 
 /**
  * Ship only the catalogue fields this app reads.
@@ -37,6 +52,7 @@ const base = process.env.VITE_BASE || '/'
 
 export default defineConfig({
   base,
+  define: { __BUILD__: JSON.stringify(buildStamp()) },
   plugins: [
     slimCatalogue(),
     react(),
