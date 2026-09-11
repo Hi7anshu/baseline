@@ -156,16 +156,29 @@ export default function Data({ S, settings, fatigue, commitState, commitSettings
     }
   }
 
-  async function onSync() {
+  /**
+   * Pull from Hevy.
+   *
+   * `full` asks for the whole history instead of the changes since last time, which is how a
+   * matching fix reaches training that is already on the device. Identification happens at
+   * import: an entry stores a catalogue id and nothing about the name it came from, so when the
+   * matcher improves there is no way to re-read the old rows — they have to come again. Merging
+   * is by Hevy id, so this replaces each workout rather than duplicating it, and measurements,
+   * nutrition and sleep are not touched at all.
+   */
+  async function onSync(full = false) {
     if (!key.trim()) return failed('Paste your Hevy API key first.')
     setBusy('Connecting…'); setErr(null); setMsg(null)
     try {
       await fetchUser(key.trim())
       const startedAt = new Date().toISOString()
-      const { state, stats } = await sync(S, { ...settings, apiKey: key.trim() }, { onProgress: setBusy })
+      const from = { ...settings, apiKey: key.trim(), lastSync: full ? null : settings.lastSync }
+      const { state, stats } = await sync(S, from, { onProgress: setBusy })
       await commitState(state)
       await commitSettings({ ...settings, apiKey: key.trim(), lastSync: startedAt })
-      done(`Synced. ${stats.added} workouts in, ${stats.deleted} removed, ${stats.total} total.`)
+      done(full
+        ? `Re-read ${stats.added} workouts — ${stats.total} on file. Anything the matcher can now place has been placed.`
+        : `Synced. ${stats.added} workouts in, ${stats.deleted} removed, ${stats.total} total.`)
     } catch (ex) {
       failed(ex instanceof HevyError ? ex.message : (ex.message || 'Sync failed.'))
     }
@@ -299,11 +312,23 @@ export default function Data({ S, settings, fatigue, commitState, commitSettings
           spellCheck={false}
           onChange={e => setKey(e.target.value)}
         />
-        <button className="btn" disabled={!!busy} onClick={onSync}>
+        <button className="btn" disabled={!!busy} onClick={() => onSync(false)}>
           {settings.lastSync ? 'Sync now' : 'Connect and sync'}
         </button>
         {settings.lastSync && (
-          <p className="foot">Last synced {new Date(settings.lastSync).toLocaleString()}.</p>
+          <>
+            <p className="foot">Last synced {new Date(settings.lastSync).toLocaleString()}.</p>
+            <button className="btn small" disabled={!!busy} onClick={() => onSync(true)}>
+              Re-read everything
+            </button>
+            <p className="foot">
+              A normal sync only asks for what changed in Hevy, so a workout already here keeps
+              whatever exercises it was matched to on the day it arrived. When identification
+              improves — or you correct something in Unidentified — this pulls the full history
+              again and re-matches it. Slower, safe to repeat, and it leaves measurements,
+              nutrition and sleep alone.
+            </p>
+          </>
         )}
         <p className="foot">
           The key is stored on this device only and goes nowhere but Hevy. Without Pro the key is

@@ -167,6 +167,14 @@ node tools/check-sanity.mjs                          # no name resolves to the w
 `check-matching.mjs` reporting anything below 61/62 is a regression. The single expected miss is
 `Rowing Machine`, which genuinely has no catalogue equivalent.
 
+**A matching fix does not reach training already on the device.** An entry stores a catalogue
+id and nothing about the name it came from, so old rows cannot be re-read — they have to come
+again. **Data → Automatic sync → Re-read everything** asks Hevy for the full history instead of
+the changes since last time; merging is by Hevy id, so each workout is replaced rather than
+duplicated, and measurements, nutrition and sleep are untouched. On CSV-only setups there is no
+equivalent: `mergeImport` lets existing days win, so re-importing changes nothing. Clear the
+local copy and import again.
+
 `check-sanity.mjs` is the one that must exit 0. It asks a different question from the others:
 not *did this resolve* but *did it resolve to something absurd* — a chest machine landing on
 legs, a lift landing on a yoga pose. That failure is silent, which is why it gets its own sweep.
