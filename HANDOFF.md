@@ -162,18 +162,25 @@ node tools/check-strength.mjs tools/hevy-fixture.csv # e1RM progress; expect 14 
 node tools/find-exercise.mjs "face+pull" "hip+thrust" # search the catalogue when adding aliases
 node tools/check-backup.mjs                          # export -> restore round trip
 node tools/check-sanity.mjs                          # no name resolves to the wrong body part
+node tools/check-reimport.mjs tools/hevy-fixture.csv # a matching fix reaches days already on file
 ```
 
 `check-matching.mjs` reporting anything below 61/62 is a regression. The single expected miss is
 `Rowing Machine`, which genuinely has no catalogue equivalent.
 
-**A matching fix does not reach training already on the device.** An entry stores a catalogue
-id and nothing about the name it came from, so old rows cannot be re-read — they have to come
-again. **Data → Automatic sync → Re-read everything** asks Hevy for the full history instead of
-the changes since last time; merging is by Hevy id, so each workout is replaced rather than
-duplicated, and measurements, nutrition and sleep are untouched. On CSV-only setups there is no
-equivalent: `mergeImport` lets existing days win, so re-importing changes nothing. Clear the
-local copy and import again.
+**A matching fix reaches old training only by importing again.** An entry stores a catalogue id
+and nothing about the name it came from, so a day already on file cannot be re-read in place —
+it has to arrive a second time.
+
+On CSV that is just re-exporting from Hevy and importing it. `importText` drops the dates the
+incoming file covers before calling `mergeImport`, so the file is authoritative for every day
+in it and everything gets re-matched. **That is one `filter` in `Data.jsx` and deleting it would
+silently strand every future fix** — upstream's `mergeImport` on its own lets the existing day
+win. `check-reimport.mjs` exists to catch exactly that.
+
+On the API, **Data → Automatic sync → Re-read everything** does the same job: it asks for the
+full history rather than the changes since last sync. Merging is by Hevy id, so each workout is
+replaced rather than duplicated. Neither route touches measurements, nutrition or sleep.
 
 `check-sanity.mjs` is the one that must exit 0. It asks a different question from the others:
 not *did this resolve* but *did it resolve to something absurd* — a chest machine landing on
