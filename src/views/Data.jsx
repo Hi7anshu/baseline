@@ -298,12 +298,22 @@ export default function Data({ S, settings, fatigue, commitState, commitSettings
         <h2 className="c-h">Import from Hevy</h2>
         <p className="p">
           In Hevy: <strong>Settings → Export &amp; Import Data → Export Workout Data</strong>. Save the
-          CSV, then pick it here. Importing again later only adds what is new.
+          CSV, then pick it here. Importing again is safe and never duplicates anything — every
+          day the file covers is read fresh, so a session you edited in Hevy comes through
+          corrected, and so does anything the app has since learned to identify.
         </p>
         <input ref={file} type="file" accept=".csv,.xml,text/csv" onChange={onFile} hidden />
         <button className="btn primary" disabled={!!busy} onClick={() => file.current?.click()}>
           Choose CSV file
         </button>
+        {!canLink() && (
+          <p className="foot">
+            On a desktop browser there is also a <strong>Linked export</strong> card above, which
+            remembers the file so importing is one button. It needs an API that Chrome for
+            Android and Safari on iOS do not have, so on a phone it is not shown — nothing is
+            missing from this version, the browser simply cannot hold onto a file.
+          </p>
+        )}
       </section>
 
       <section className="card">
